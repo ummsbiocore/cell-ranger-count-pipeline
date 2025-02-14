@@ -6,6 +6,22 @@ Steps:
 
 Please check following web site for detailed information:  https://support.10xgenomics.com/single-cell-gene-expression/software/pipelines/latest/using/count
 
+**Suggested pipelines based on library type: **
+
+| library type | Cell Ranger Pipeline |
+| -------- | -------- |
+| 3' Gene Expression     | count     |
+| 3' Gene Expression + Antibody/CRISPR Guide Capture     | count     |
+| Antibody Capture only     | count     |
+| 3' Gene Expression + Cell Multiplexing (+ Antibody/CRISPR Guide Capture)     | multi     |
+| Flex Gene Expression (+ Antibody/CRISPR Guide Capture)    | multi     |
+| 5' V(D)J only     | vdj     |
+| 5' Gene Expression only    | count     |
+| Antibody Capture (+ Gene Expression)     | count     |
+| CRISPR (FB) + Gene Expression     | count     |
+| 5' Gene Expression + V(D)J (+ FB)    | multi     |
+| 5' Gene Expression + V(D)J + Antigen Capture (BEAM) (+ Antibody Capture)     | multi     |
+
 Inputs: 
   - Reads
   - Mate (single or pair)
