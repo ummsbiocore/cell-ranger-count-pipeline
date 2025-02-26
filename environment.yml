@@ -1,6 +1,4 @@
-# You can use this file to create a conda environment for this pipeline:
-#   conda env create -f environment.yml
-name: dolphinnext
+name: via
 channels:
   - conda-forge
   - bioconda
@@ -12,4 +10,7 @@ dependencies:
   - samtools=1.3
   - igvtools=2.5.3
   - bedtools=2.30.0
-  - multiqc
+  - biopython
+  - python=3.8
+  - requests
+  - 10x_bamtofastq=1.4.1
