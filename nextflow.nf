@@ -10,8 +10,8 @@ def pathChecker(input, path, type){
 		if (path.indexOf('s3:') > -1 || path.indexOf('S3:') >-1){
 			cmd = "mkdir -p check && cd check && aws s3 cp ${recursive} ${path} ${workDir}/${input} && ln -s ${workDir}/${input} . && cd .."
 		} else if (path.indexOf('http') > -1){
-			def slashCount = path.count("/")
-			def cutDir = slashCount - 2;
+			slashCount = path.count("/")
+			cutDir = slashCount - 2;
 			cmd = "mkdir -p check && cd check && wget --no-check-certificate --secure-protocol=TLSv1 -l inf -nc -nH --cut-dirs=$cutDir -R 'index.html*' -r --no-parent --directory-prefix=\$PWD/${input} ${path}  && cd .."
 		} else if (path.indexOf('gs:') > -1 || path.indexOf('GS:') >-1){
 			if (type == "folder"){
@@ -1150,7 +1150,7 @@ input:
 
 output:
  path "final_report.html"  ,emit:g36_19_outputHTML00 
- path "Final_Analysis.rds"  ,emit:g36_19_rdsFile10_g36_25 
+ path "Final_Analysis.rds"  ,emit:g36_19_rdsFile10_g36_22 
  path "*.tsv"  ,emit:g36_19_outFileTSV22 
 
 container "quay.io/viascientific/scrna_seurat:2.0"
@@ -1215,89 +1215,6 @@ Convert(paste0(seu_name,".h5Seurat"), dest = "h5ad")
 """
 
 
-}
-
-//* autofill
-if ($HOSTNAME == "default"){
-    $CPU  = 1
-    $MEMORY = 30
-}
-//* platform
-//* platform
-//* autofill
-
-process scRNA_Analysis_Module_seurat_to_sce {
-
-publishDir params.outdir, mode: 'copy', saveAs: {filename -> if (filename =~ /sce_obj.rds$/) "Analysis_Apps/$filename"}
-input:
- path seurat_object
-
-output:
- path "sce_obj.rds"  ,emit:g36_25_rdsFile00_g36_27 
-
-label 'scrna_seurat'
-
-script:
-"""
-#!/usr/bin/env Rscript
-
-library(Seurat)
-library(SingleCellExperiment) 
-
-seurat = readRDS("${seurat_object}")
-
-sce = as.SingleCellExperiment(seurat)
-saveRDS(sce, file='sce_obj.rds')
-"""
-}
-
-
-process scRNA_Analysis_Module_launch_isee {
-
-publishDir params.outdir, mode: 'copy', saveAs: {filename -> if (filename =~ /launch_iSEE.R$/) "Analysis_Apps/$filename"}
-input:
- path sce_object
-
-output:
- path 'launch_iSEE.R'  ,emit:g36_27_outputFileOut00 
-
-
-shell:
-
-'''
-#!/usr/bin/env perl
-
-my $script = <<'EOF';
-
-library(iSEE)
-
-getPath <- function() {
-    cmdArgs <- commandArgs(trailingOnly = FALSE)
-    needle <- "--file="
-    match <- grep(needle, cmdArgs)
-    if (length(match) > 0) {
-        path <- dirname(normalizePath(sub(needle, "", cmdArgs[match]))[1])
-        return(path)
-    } else {
-        return(normalizePath(getwd()))
-    }
-}
-
-path = normalizePath(paste0(getPath()))
-sce_file = "!{sce_object}"
-
-sce = readRDS(normalizePath(paste0(path, '/', sce_file)))
-app = iSEE(sce)
-options(shiny.host = "0.0.0.0", shiny.port = 8789)
-shiny::runApp(app)
-
-EOF
-
-open OUT, ">launch_iSEE.R";
-print OUT $script;
-close OUT;
-
-'''
 }
 
 //* autofill
@@ -1507,21 +1424,13 @@ g36_17_rdsFile00_g36_19 = scRNA_Analysis_Module_PCA_and_Batch_Effect_Correction.
 
 scRNA_Analysis_Module_Clustering_and_Find_Markers(g36_17_rdsFile00_g36_19)
 g36_19_outputHTML00 = scRNA_Analysis_Module_Clustering_and_Find_Markers.out.g36_19_outputHTML00
-g36_19_rdsFile10_g36_25 = scRNA_Analysis_Module_Clustering_and_Find_Markers.out.g36_19_rdsFile10_g36_25
-(g36_19_rdsFile10_g36_22,g36_19_rdsFile10_g36_30) = [g36_19_rdsFile10_g36_25,g36_19_rdsFile10_g36_25]
+g36_19_rdsFile10_g36_22 = scRNA_Analysis_Module_Clustering_and_Find_Markers.out.g36_19_rdsFile10_g36_22
+(g36_19_rdsFile10_g36_30) = [g36_19_rdsFile10_g36_22]
 g36_19_outFileTSV22 = scRNA_Analysis_Module_Clustering_and_Find_Markers.out.g36_19_outFileTSV22
 
 
 scRNA_Analysis_Module_Create_h5ad(g36_19_rdsFile10_g36_22)
 g36_22_h5ad_file00 = scRNA_Analysis_Module_Create_h5ad.out.g36_22_h5ad_file00
-
-
-scRNA_Analysis_Module_seurat_to_sce(g36_19_rdsFile10_g36_25)
-g36_25_rdsFile00_g36_27 = scRNA_Analysis_Module_seurat_to_sce.out.g36_25_rdsFile00_g36_27
-
-
-scRNA_Analysis_Module_launch_isee(g36_25_rdsFile00_g36_27)
-g36_27_outputFileOut00 = scRNA_Analysis_Module_launch_isee.out.g36_27_outputFileOut00
 
 
 scRNA_Analysis_Module_SCEtoLOOM(g36_19_rdsFile10_g36_30)
