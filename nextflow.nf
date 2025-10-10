@@ -30,6 +30,8 @@ if (!params.mate){params.mate = ""}
 if (!params.custom_additional_genome){params.custom_additional_genome = ""} 
 if (!params.Metadata){params.Metadata = ""} 
 if (!params.custom_additional_gtf){params.custom_additional_gtf = ""} 
+if (!params.mask_gtf){params.mask_gtf = ""} 
+if (!params.gtf){params.gtf = ""} 
 // Stage empty file to be used as an optional input where required
 ch_empty_file_1 = file("$baseDir/.emptyfiles/NO_FILE_1", hidden:true)
 ch_empty_file_2 = file("$baseDir/.emptyfiles/NO_FILE_2", hidden:true)
@@ -49,6 +51,8 @@ Channel.value(params.mate).set{g_2_2_g_51}
 g_18_2_g17_58 = params.custom_additional_genome && file(params.custom_additional_genome, type: 'any').exists() ? file(params.custom_additional_genome, type: 'any') : ch_empty_file_1
 g_41_1_g36_0 = params.Metadata && file(params.Metadata, type: 'any').exists() ? file(params.Metadata, type: 'any') : ch_empty_file_1
 g_48_3_g17_58 = params.custom_additional_gtf && file(params.custom_additional_gtf, type: 'any').exists() ? file(params.custom_additional_gtf, type: 'any') : ch_empty_file_2
+g_59_2_g57_1 = params.mask_gtf && file(params.mask_gtf, type: 'any').exists() ? file(params.mask_gtf, type: 'any') : ch_empty_file_1
+g_61_3_g57_1 = file(params.gtf, type: 'any')
 
 //* @style @array:{bcl_directory,mkfastq_sampleSheet} @multicolumn:{bcl_directory,mkfastq_sampleSheet}
 //* autofill
@@ -665,7 +669,7 @@ input:
  path ref
 
 output:
- path "${name}_outs"  ,emit:g_5_outputDir00 
+ path "${name}_outs"  ,emit:g_5_outputDir00_g57_5 
  path "${name}_web_summary.html"  ,emit:g_5_outputHTML11 
  tuple val(name), file("${name}_filtered_feature_bc_matrix") ,optional:true  ,emit:g_5_outputDir22 
  tuple val(name), file("${name}_raw_feature_bc_matrix")  ,emit:g_5_outputDir33 
@@ -677,6 +681,7 @@ when:
 params.run_Cell_Ranger_Count == "yes"
 
 script:
+
 sample = name
 nameAll = reads.toString()
 nameArray = nameAll.split(' ')
@@ -1311,6 +1316,102 @@ mv overall_filtration_summary.tsv output
 }
 
 
+process RNA_Velocity_Module_prepare_input_velocyto {
+
+input:
+ path outs
+
+output:
+ tuple val("${new_name}"), file("output_files/input.bam"), file("output_files/input.bam.bai")  ,emit:g57_5_bamFile00_g57_1 
+ tuple val("${new_name}"), file("output_files/input_barcodes.tsv.gz")  ,emit:g57_5_inputFileTsv11_g57_1 
+
+when:
+params.run_velocity == "yes"
+
+script:
+
+try {
+	myVariable = bam
+} catch (MissingPropertyException e) {
+	bam = ""
+}
+
+try {
+	myVariable = bai
+} catch (MissingPropertyException e) {
+	bai = ""
+}
+
+try {
+	myVariable = barcodes
+} catch (MissingPropertyException e) {
+	barcodes = ""
+}
+
+new_name = outs.toString().startsWith('NO_FILE')
+    ? name
+    : outs.toString().replaceFirst(/_outs$/, '')
+
+"""
+mkdir -p output_files
+
+if [[ ${outs} == NO_FILE* ]]; then
+    mv ${bam} output_files/input.bam
+    mv ${bai} output_files/input.bam.bai
+    mv ${barcodes} output_files/input_barcodes.tsv.gz
+
+else
+    mv ${outs}/possorted_genome_bam.bam output_files/input.bam
+    mv ${outs}/possorted_genome_bam.bam.bai output_files/input.bam.bai
+    mv ${outs}/filtered_feature_bc_matrix/barcodes.tsv.gz output_files/input_barcodes.tsv.gz
+fi
+echo ${new_name}
+
+"""
+}
+
+//* autofill
+if ($HOSTNAME == "default"){
+    $CPU  = 16
+    $MEMORY = 50
+}
+//* platform
+//* platform
+//* autofill
+
+process RNA_Velocity_Module_velocyto {
+
+input:
+ tuple val(name), file(bam), file(bai)
+ tuple val(name), file(barcodes)
+ path mask_gtf
+ path gtf_velo
+
+output:
+ path "${name}_output.loom"  ,emit:g57_1_loom00 
+
+container "quay.io/biocontainers/velocyto.py:0.17.17--py310h581d4b6_7"
+
+when:
+params.run_velocity == "yes"
+
+script:
+
+mask_gtf_option = mask_gtf.name.startsWith('NO_FILE') ? "" : "-m ${mask_gtf}"
+
+"""
+echo ${name}
+mkdir -p velocyto_out
+
+cp ${bam} ./local_input.bam
+velocyto run -b ${barcodes} ${mask_gtf_option} -o velocyto_out local_input.bam ${gtf_velo}
+
+mv velocyto_out/*.loom ${name}_output.loom
+
+"""
+}
+
+
 workflow {
 
 
@@ -1394,7 +1495,7 @@ g_20_reference02_g_5 = cellranger_ref_checker.out.g_20_reference02_g_5
 
 
 Count(g_51_reads00_g_5,g_2_1_g_5,g_20_reference02_g_5)
-g_5_outputDir00 = Count.out.g_5_outputDir00
+g_5_outputDir00_g57_5 = Count.out.g_5_outputDir00_g57_5
 g_5_outputHTML11 = Count.out.g_5_outputHTML11
 g_5_outputDir22 = Count.out.g_5_outputDir22
 g_5_outputDir33 = Count.out.g_5_outputDir33
@@ -1439,6 +1540,18 @@ g36_30_outputFileOut00 = scRNA_Analysis_Module_SCEtoLOOM.out.g36_30_outputFileOu
 
 scRNA_Analysis_Module_filter_summary(g36_0_outFileTSV20_g36_34.collect())
 g36_34_outputFileHTML00 = scRNA_Analysis_Module_filter_summary.out.g36_34_outputFileHTML00
+
+g_5_outputDir00_g57_5= g_5_outputDir00_g57_5.ifEmpty(ch_empty_file_1) 
+
+
+RNA_Velocity_Module_prepare_input_velocyto(g_5_outputDir00_g57_5)
+g57_5_bamFile00_g57_1 = RNA_Velocity_Module_prepare_input_velocyto.out.g57_5_bamFile00_g57_1
+g57_5_inputFileTsv11_g57_1 = RNA_Velocity_Module_prepare_input_velocyto.out.g57_5_inputFileTsv11_g57_1
+
+
+
+RNA_Velocity_Module_velocyto(g57_5_bamFile00_g57_1,g57_5_inputFileTsv11_g57_1,g_59_2_g57_1,g_61_3_g57_1)
+g57_1_loom00 = RNA_Velocity_Module_velocyto.out.g57_1_loom00
 
 
 }
