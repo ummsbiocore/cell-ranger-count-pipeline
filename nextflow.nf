@@ -31,7 +31,8 @@ if (!params.custom_additional_genome){params.custom_additional_genome = ""}
 if (!params.Metadata){params.Metadata = ""} 
 if (!params.custom_additional_gtf){params.custom_additional_gtf = ""} 
 if (!params.mask_gtf){params.mask_gtf = ""} 
-if (!params.gtf){params.gtf = ""} 
+if (!params.barcodes){params.barcodes = ""} 
+if (!params.bam){params.bam = ""} 
 // Stage empty file to be used as an optional input where required
 ch_empty_file_1 = file("$baseDir/.emptyfiles/NO_FILE_1", hidden:true)
 ch_empty_file_2 = file("$baseDir/.emptyfiles/NO_FILE_2", hidden:true)
@@ -52,7 +53,6 @@ g_18_2_g17_58 = params.custom_additional_genome && file(params.custom_additional
 g_41_1_g36_0 = params.Metadata && file(params.Metadata, type: 'any').exists() ? file(params.Metadata, type: 'any') : ch_empty_file_1
 g_48_3_g17_58 = params.custom_additional_gtf && file(params.custom_additional_gtf, type: 'any').exists() ? file(params.custom_additional_gtf, type: 'any') : ch_empty_file_2
 g_59_2_g57_1 = params.mask_gtf && file(params.mask_gtf, type: 'any').exists() ? file(params.mask_gtf, type: 'any') : ch_empty_file_1
-g_61_3_g57_1 = file(params.gtf, type: 'any')
 
 //* @style @array:{bcl_directory,mkfastq_sampleSheet} @multicolumn:{bcl_directory,mkfastq_sampleSheet}
 //* autofill
@@ -673,7 +673,7 @@ output:
  path "${name}_web_summary.html"  ,emit:g_5_outputHTML11 
  tuple val(name), file("${name}_filtered_feature_bc_matrix") ,optional:true  ,emit:g_5_outputDir22 
  tuple val(name), file("${name}_raw_feature_bc_matrix")  ,emit:g_5_outputDir33 
- tuple val(name), file("${name}_filtered_feature_bc_matrix.h5")  ,emit:g_5_h5_file40_g_49 
+ tuple val(name), file("${name}_filtered_feature_bc_matrix.h5")  ,emit:g_5_h5_file44 
  tuple val(name), file("${name}_raw_feature_bc_matrix.h5")  ,emit:g_5_h5_file51_g_49 
 
 disk { 1000.GB * task.attempt }
@@ -760,7 +760,6 @@ process Ambient_RNA_QC {
 
 publishDir params.outdir, mode: 'copy', saveAs: {filename -> if (filename =~ /.*_Ambient_RNA_QC.html$/) "Ambient_RNA_Removal_Report/$filename"}
 input:
- tuple val(name), file("${name}_filtered_feature_bc_matrix.h5")
  tuple val(name), file("${name}_raw_feature_bc_matrix.h5")
 
 output:
@@ -1385,7 +1384,6 @@ input:
  tuple val(name), file(bam), file(bai)
  tuple val(name), file(barcodes)
  path mask_gtf
- path gtf_velo
 
 output:
  path "${name}_output.loom"  ,emit:g57_1_loom00 
@@ -1499,11 +1497,11 @@ g_5_outputDir00_g57_5 = Count.out.g_5_outputDir00_g57_5
 g_5_outputHTML11 = Count.out.g_5_outputHTML11
 g_5_outputDir22 = Count.out.g_5_outputDir22
 g_5_outputDir33 = Count.out.g_5_outputDir33
-g_5_h5_file40_g_49 = Count.out.g_5_h5_file40_g_49
+g_5_h5_file44 = Count.out.g_5_h5_file44
 g_5_h5_file51_g_49 = Count.out.g_5_h5_file51_g_49
 
 
-Ambient_RNA_QC(g_5_h5_file40_g_49,g_5_h5_file51_g_49)
+Ambient_RNA_QC(g_5_h5_file51_g_49)
 g_49_h5_file00_g36_0 = Ambient_RNA_QC.out.g_49_h5_file00_g36_0
 g_49_outputFileHTML11 = Ambient_RNA_QC.out.g_49_outputFileHTML11
 
@@ -1550,7 +1548,7 @@ g57_5_inputFileTsv11_g57_1 = RNA_Velocity_Module_prepare_input_velocyto.out.g57_
 
 
 
-RNA_Velocity_Module_velocyto(g57_5_bamFile00_g57_1,g57_5_inputFileTsv11_g57_1,g_59_2_g57_1,g_61_3_g57_1)
+RNA_Velocity_Module_velocyto(g57_5_bamFile00_g57_1,g57_5_inputFileTsv11_g57_1,g_59_2_g57_1)
 g57_1_loom00 = RNA_Velocity_Module_velocyto.out.g57_1_loom00
 
 
