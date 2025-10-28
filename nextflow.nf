@@ -31,8 +31,7 @@ if (!params.custom_additional_genome){params.custom_additional_genome = ""}
 if (!params.Metadata){params.Metadata = ""} 
 if (!params.custom_additional_gtf){params.custom_additional_gtf = ""} 
 if (!params.mask_gtf){params.mask_gtf = ""} 
-if (!params.barcodes){params.barcodes = ""} 
-if (!params.bam){params.bam = ""} 
+if (!params.gtf){params.gtf = ""} 
 // Stage empty file to be used as an optional input where required
 ch_empty_file_1 = file("$baseDir/.emptyfiles/NO_FILE_1", hidden:true)
 ch_empty_file_2 = file("$baseDir/.emptyfiles/NO_FILE_2", hidden:true)
@@ -53,6 +52,7 @@ g_18_2_g17_58 = params.custom_additional_genome && file(params.custom_additional
 g_41_1_g36_0 = params.Metadata && file(params.Metadata, type: 'any').exists() ? file(params.Metadata, type: 'any') : ch_empty_file_1
 g_48_3_g17_58 = params.custom_additional_gtf && file(params.custom_additional_gtf, type: 'any').exists() ? file(params.custom_additional_gtf, type: 'any') : ch_empty_file_2
 g_59_2_g57_1 = params.mask_gtf && file(params.mask_gtf, type: 'any').exists() ? file(params.mask_gtf, type: 'any') : ch_empty_file_1
+g_61_3_g57_1 = file(params.gtf, type: 'any')
 
 //* @style @array:{bcl_directory,mkfastq_sampleSheet} @multicolumn:{bcl_directory,mkfastq_sampleSheet}
 //* autofill
@@ -669,7 +669,7 @@ input:
  path ref
 
 output:
- path "${name}_outs"  ,emit:g_5_outputDir00_g57_5 
+ tuple val("${name}"), file("${name}_outs")  ,emit:g_5_outputDir00_g57_5 
  path "${name}_web_summary.html"  ,emit:g_5_outputHTML11 
  tuple val(name), file("${name}_filtered_feature_bc_matrix") ,optional:true  ,emit:g_5_outputDir22 
  tuple val(name), file("${name}_raw_feature_bc_matrix")  ,emit:g_5_outputDir33 
@@ -1191,7 +1191,7 @@ input:
  path seurat_obj
 
 output:
- path "*.h5ad"  ,emit:g36_22_h5ad_file00 
+ path "*.h5ad"  ,emit:g36_22_h5ad_file01_g57_12 
 
 container "quay.io/viascientific/scrna_seurat:2.0"
 
@@ -1318,14 +1318,14 @@ mv overall_filtration_summary.tsv output
 process RNA_Velocity_Module_prepare_input_velocyto {
 
 input:
- path outs
+ tuple val(name), file(outs)
 
 output:
  tuple val("${new_name}"), file("output_files/input.bam"), file("output_files/input.bam.bai")  ,emit:g57_5_bamFile00_g57_1 
  tuple val("${new_name}"), file("output_files/input_barcodes.tsv.gz")  ,emit:g57_5_inputFileTsv11_g57_1 
 
-when:
-params.run_velocity == "yes"
+
+stageInMode 'copy'
 
 script:
 
@@ -1384,6 +1384,7 @@ input:
  tuple val(name), file(bam), file(bai)
  tuple val(name), file(barcodes)
  path mask_gtf
+ path gtf_velo
 
 output:
  path "${name}_output.loom"  ,emit:g57_1_loom00 
@@ -1405,6 +1406,27 @@ cp ${bam} ./local_input.bam
 velocyto run -b ${barcodes} ${mask_gtf_option} -o velocyto_out local_input.bam ${gtf_velo}
 
 mv velocyto_out/*.loom ${name}_output.loom
+
+"""
+}
+
+
+process RNA_Velocity_Module_scVelo {
+
+publishDir params.outdir, mode: 'copy', saveAs: {filename -> if (filename =~ /${name}_processed.h5ad$/) "processed_h5ad/$filename"}
+input:
+ path h5ad
+
+output:
+ path "${name}_processed.h5ad"  ,emit:g57_12_h5ad00 
+
+container 'quay.io/mustafapir/scvelo_shiny:1.0.0'
+
+process:
+
+"""
+
+python process_adata.py --ladata ${loom} --adata ${h5ad} --output "${name}_processed.h5ad"
 
 """
 }
@@ -1529,7 +1551,7 @@ g36_19_outFileTSV22 = scRNA_Analysis_Module_Clustering_and_Find_Markers.out.g36_
 
 
 scRNA_Analysis_Module_Create_h5ad(g36_19_rdsFile10_g36_22)
-g36_22_h5ad_file00 = scRNA_Analysis_Module_Create_h5ad.out.g36_22_h5ad_file00
+g36_22_h5ad_file01_g57_12 = scRNA_Analysis_Module_Create_h5ad.out.g36_22_h5ad_file01_g57_12
 
 
 scRNA_Analysis_Module_SCEtoLOOM(g36_19_rdsFile10_g36_30)
@@ -1548,8 +1570,12 @@ g57_5_inputFileTsv11_g57_1 = RNA_Velocity_Module_prepare_input_velocyto.out.g57_
 
 
 
-RNA_Velocity_Module_velocyto(g57_5_bamFile00_g57_1,g57_5_inputFileTsv11_g57_1,g_59_2_g57_1)
+RNA_Velocity_Module_velocyto(g57_5_bamFile00_g57_1,g57_5_inputFileTsv11_g57_1,g_59_2_g57_1,g_61_3_g57_1)
 g57_1_loom00 = RNA_Velocity_Module_velocyto.out.g57_1_loom00
+
+
+RNA_Velocity_Module_scVelo(g36_22_h5ad_file01_g57_12)
+g57_12_h5ad00 = RNA_Velocity_Module_scVelo.out.g57_12_h5ad00
 
 
 }
