@@ -31,7 +31,6 @@ if (!params.custom_additional_genome){params.custom_additional_genome = ""}
 if (!params.Metadata){params.Metadata = ""} 
 if (!params.custom_additional_gtf){params.custom_additional_gtf = ""} 
 if (!params.mask_gtf){params.mask_gtf = ""} 
-if (!params.gtf){params.gtf = ""} 
 // Stage empty file to be used as an optional input where required
 ch_empty_file_1 = file("$baseDir/.emptyfiles/NO_FILE_1", hidden:true)
 ch_empty_file_2 = file("$baseDir/.emptyfiles/NO_FILE_2", hidden:true)
@@ -52,7 +51,6 @@ g_18_2_g17_58 = params.custom_additional_genome && file(params.custom_additional
 g_41_1_g36_0 = params.Metadata && file(params.Metadata, type: 'any').exists() ? file(params.Metadata, type: 'any') : ch_empty_file_1
 g_48_3_g17_58 = params.custom_additional_gtf && file(params.custom_additional_gtf, type: 'any').exists() ? file(params.custom_additional_gtf, type: 'any') : ch_empty_file_2
 g_59_2_g57_1 = params.mask_gtf && file(params.mask_gtf, type: 'any').exists() ? file(params.mask_gtf, type: 'any') : ch_empty_file_1
-g_61_3_g57_1 = file(params.gtf, type: 'any')
 
 //* @style @array:{bcl_directory,mkfastq_sampleSheet} @multicolumn:{bcl_directory,mkfastq_sampleSheet}
 //* autofill
@@ -669,11 +667,11 @@ input:
  path ref
 
 output:
- tuple val("${name}"), file("${name}_outs")  ,emit:g_5_outputDir00_g57_5 
+ path "${name}_outs"  ,emit:g_5_outputDir00_g57_5 
  path "${name}_web_summary.html"  ,emit:g_5_outputHTML11 
  tuple val(name), file("${name}_filtered_feature_bc_matrix") ,optional:true  ,emit:g_5_outputDir22 
  tuple val(name), file("${name}_raw_feature_bc_matrix")  ,emit:g_5_outputDir33 
- tuple val(name), file("${name}_filtered_feature_bc_matrix.h5")  ,emit:g_5_h5_file44 
+ tuple val(name), file("${name}_filtered_feature_bc_matrix.h5")  ,emit:g_5_h5_file40_g_49 
  tuple val(name), file("${name}_raw_feature_bc_matrix.h5")  ,emit:g_5_h5_file51_g_49 
 
 disk { 1000.GB * task.attempt }
@@ -760,6 +758,7 @@ process Ambient_RNA_QC {
 
 publishDir params.outdir, mode: 'copy', saveAs: {filename -> if (filename =~ /.*_Ambient_RNA_QC.html$/) "Ambient_RNA_Removal_Report/$filename"}
 input:
+ tuple val(name), file("${name}_filtered_feature_bc_matrix.h5")
  tuple val(name), file("${name}_raw_feature_bc_matrix.h5")
 
 output:
@@ -1318,14 +1317,14 @@ mv overall_filtration_summary.tsv output
 process RNA_Velocity_Module_prepare_input_velocyto {
 
 input:
- tuple val(name), file(outs)
+ path outs
 
 output:
  tuple val("${new_name}"), file("output_files/input.bam"), file("output_files/input.bam.bai")  ,emit:g57_5_bamFile00_g57_1 
  tuple val("${new_name}"), file("output_files/input_barcodes.tsv.gz")  ,emit:g57_5_inputFileTsv11_g57_1 
 
-
-stageInMode 'copy'
+when:
+params.run_velocity == "yes"
 
 script:
 
@@ -1380,6 +1379,7 @@ if ($HOSTNAME == "default"){
 
 process RNA_Velocity_Module_velocyto {
 
+publishDir params.outdir, mode: 'copy', saveAs: {filename -> if (filename =~ /${name}_output.loom$/) "loom_out/$filename"}
 input:
  tuple val(name), file(bam), file(bai)
  tuple val(name), file(barcodes)
@@ -1387,7 +1387,7 @@ input:
  path gtf_velo
 
 output:
- path "${name}_output.loom"  ,emit:g57_1_loom00 
+ path "${name}_output.loom"  ,emit:g57_1_loom00_g57_12 
 
 container "quay.io/biocontainers/velocyto.py:0.17.17--py310h581d4b6_7"
 
@@ -1411,22 +1411,29 @@ mv velocyto_out/*.loom ${name}_output.loom
 }
 
 
-process RNA_Velocity_Module_scVelo {
+process RNA_Velocity_Module_process_anndata {
 
-publishDir params.outdir, mode: 'copy', saveAs: {filename -> if (filename =~ /${name}_processed.h5ad$/) "processed_h5ad/$filename"}
+publishDir params.outdir, mode: 'copy', saveAs: {filename -> if (filename =~ /processed_adata.h5ad$/) "scVelo_out/$filename"}
 input:
- path h5ad
+ path loom_file
+ path h5ad_file
 
 output:
- path "${name}_processed.h5ad"  ,emit:g57_12_h5ad00 
+ path "processed_adata.h5ad"  ,emit:g57_12_h5ad00 
 
-container 'quay.io/mustafapir/scvelo_shiny:1.0.0'
+container 'quay.io/mustafapir/scvelo_shiny:1.0.2'
 
-process:
+when:
+params.run_velocity == "yes"
+
+script:
 
 """
 
-python process_adata.py --ladata ${loom} --adata ${h5ad} --output "${name}_processed.h5ad"
+preprocess_anndata.py \
+    --h5ad ${h5ad_file} \
+    --loom ${loom_file} \
+    --output 'processed_adata.h5ad'
 
 """
 }
@@ -1499,6 +1506,7 @@ g17_53_bed03_g17_54= g17_53_bed03_g17_54.ifEmpty(ch_empty_file_4)
 
 Check_and_Build_Module_check_files(g17_58_gtfFile10_g17_54,g17_58_genome01_g17_54,g17_52_genomeSizes02_g17_54,g17_53_bed03_g17_54)
 g17_54_gtfFile01_g_19 = Check_and_Build_Module_check_files.out.g17_54_gtfFile01_g_19
+(g17_54_gtfFile03_g57_1) = [g17_54_gtfFile01_g_19]
 g17_54_genome10_g_19 = Check_and_Build_Module_check_files.out.g17_54_genome10_g_19
 g17_54_genomeSizes22 = Check_and_Build_Module_check_files.out.g17_54_genomeSizes22
 g17_54_bed33 = Check_and_Build_Module_check_files.out.g17_54_bed33
@@ -1519,11 +1527,11 @@ g_5_outputDir00_g57_5 = Count.out.g_5_outputDir00_g57_5
 g_5_outputHTML11 = Count.out.g_5_outputHTML11
 g_5_outputDir22 = Count.out.g_5_outputDir22
 g_5_outputDir33 = Count.out.g_5_outputDir33
-g_5_h5_file44 = Count.out.g_5_h5_file44
+g_5_h5_file40_g_49 = Count.out.g_5_h5_file40_g_49
 g_5_h5_file51_g_49 = Count.out.g_5_h5_file51_g_49
 
 
-Ambient_RNA_QC(g_5_h5_file51_g_49)
+Ambient_RNA_QC(g_5_h5_file40_g_49,g_5_h5_file51_g_49)
 g_49_h5_file00_g36_0 = Ambient_RNA_QC.out.g_49_h5_file00_g36_0
 g_49_outputFileHTML11 = Ambient_RNA_QC.out.g_49_outputFileHTML11
 
@@ -1570,12 +1578,12 @@ g57_5_inputFileTsv11_g57_1 = RNA_Velocity_Module_prepare_input_velocyto.out.g57_
 
 
 
-RNA_Velocity_Module_velocyto(g57_5_bamFile00_g57_1,g57_5_inputFileTsv11_g57_1,g_59_2_g57_1,g_61_3_g57_1)
-g57_1_loom00 = RNA_Velocity_Module_velocyto.out.g57_1_loom00
+RNA_Velocity_Module_velocyto(g57_5_bamFile00_g57_1,g57_5_inputFileTsv11_g57_1,g_59_2_g57_1,g17_54_gtfFile03_g57_1)
+g57_1_loom00_g57_12 = RNA_Velocity_Module_velocyto.out.g57_1_loom00_g57_12
 
 
-RNA_Velocity_Module_scVelo(g36_22_h5ad_file01_g57_12)
-g57_12_h5ad00 = RNA_Velocity_Module_scVelo.out.g57_12_h5ad00
+RNA_Velocity_Module_process_anndata(g57_1_loom00_g57_12.collect(),g36_22_h5ad_file01_g57_12)
+g57_12_h5ad00 = RNA_Velocity_Module_process_anndata.out.g57_12_h5ad00
 
 
 }
