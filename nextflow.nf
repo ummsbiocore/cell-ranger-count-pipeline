@@ -31,6 +31,9 @@ if (!params.custom_additional_genome){params.custom_additional_genome = ""}
 if (!params.Metadata){params.Metadata = ""} 
 if (!params.custom_additional_gtf){params.custom_additional_gtf = ""} 
 if (!params.mask_gtf){params.mask_gtf = ""} 
+if (!params.db_feather){params.db_feather = ""} 
+if (!params.motif_db){params.motif_db = ""} 
+if (!params.tf_lists){params.tf_lists = ""} 
 // Stage empty file to be used as an optional input where required
 ch_empty_file_1 = file("$baseDir/.emptyfiles/NO_FILE_1", hidden:true)
 ch_empty_file_2 = file("$baseDir/.emptyfiles/NO_FILE_2", hidden:true)
@@ -51,6 +54,9 @@ g_18_2_g17_58 = params.custom_additional_genome && file(params.custom_additional
 g_41_1_g36_0 = params.Metadata && file(params.Metadata, type: 'any').exists() ? file(params.Metadata, type: 'any') : ch_empty_file_1
 g_48_3_g17_58 = params.custom_additional_gtf && file(params.custom_additional_gtf, type: 'any').exists() ? file(params.custom_additional_gtf, type: 'any') : ch_empty_file_2
 g_59_2_g57_1 = params.mask_gtf && file(params.mask_gtf, type: 'any').exists() ? file(params.mask_gtf, type: 'any') : ch_empty_file_1
+g_576_1_g_572 = file(params.db_feather, type: 'any')
+g_577_2_g_572 = file(params.motif_db, type: 'any')
+g_578_3_g_572 = file(params.tf_lists, type: 'any')
 
 //* @style @array:{bcl_directory,mkfastq_sampleSheet} @multicolumn:{bcl_directory,mkfastq_sampleSheet}
 //* autofill
@@ -900,7 +906,7 @@ output:
 container "quay.io/viascientific/scrna_seurat:2.0"
 
 when:
-(params.run_scRNA_Analysis && (params.run_scRNA_Analysis == "yes")) || !params.run_scRNA_Analysis
+(params.run_scRNA_Analysis && (params.run_scRNA_Analysis == "yes")) || !params.run_scRNA_Analysis || params.run_pySCENIC == "yes"
 
 script:
 
@@ -957,9 +963,8 @@ output:
 
 container "quay.io/viascientific/scrna_seurat:2.0"
 
-shell:
-
-'''
+script:
+"""
 #!/usr/bin/env Rscript
 
 library(Seurat)
@@ -980,7 +985,7 @@ for(i in 1:length(list_of_samples)){
 }
 saveRDS(list_of_seurat, file="merged_filtered_seurat.rds")
 
-'''
+"""
 
 
 }
@@ -1004,8 +1009,7 @@ output:
 
 container "quay.io/viascientific/scrna_seurat:2.0"
 
-shell:
-
+script:
 varFeatures = params.scRNA_Analysis_Module_PCA_and_Batch_Effect_Correction.varFeatures
 selmethod = params.scRNA_Analysis_Module_PCA_and_Batch_Effect_Correction.selmethod
 Batch_Effect_Correction = params.scRNA_Analysis_Module_PCA_and_Batch_Effect_Correction.Batch_Effect_Correction
@@ -1013,7 +1017,7 @@ WNN = params.scRNA_Analysis_Module_PCA_and_Batch_Effect_Correction.WNN
 
 //* @style @multicolumn:{varFeatures, selmethod},{Batch_Effect_Correction, WNN}
 
-'''
+"""
 #!/usr/bin/env Rscript
 
 # libraries
@@ -1022,10 +1026,10 @@ library(dplyr)
 #install.packages("harmony",repos = "http://cran.us.r-project.org")
 library(harmony)
 
-selmethod <- "!{selmethod}"
-varFeatures <- "!{varFeatures}"
+selmethod <- "${selmethod}"
+varFeatures <- "${varFeatures}"
 
-Data=readRDS("!{seurat_object}")
+Data=readRDS("${seurat_object}")
 Multi_sample=0
 if (length(Data)==1) {
 	Data=Data[[1]]
@@ -1053,7 +1057,7 @@ Multi_sample=1
 			Data <- ScaleData(Data,vars.to.regress="percent.mt")
 			}
 		Data=RunPCA(Data,npcs=100)
-		if (as.logical("!{Batch_Effect_Correction}")){
+		if (as.logical("${Batch_Effect_Correction}")){
 		Data=RunHarmony(Data,assay.use = DefaultAssay(Data),group.by.vars = "sample",max.iter.harmony = 10000,max.iter.cluster = 10000)
 		}
 	} else {
@@ -1065,17 +1069,17 @@ Multi_sample=1
 			Data <- ScaleData(Data,vars.to.regress="percent.mt")
 		}
 		Data=RunPCA(Data,npcs=100)
-		if (as.logical("!{Batch_Effect_Correction}")){
+		if (as.logical("${Batch_Effect_Correction}")){
 		Data=RunHarmony(Data,assay.use = DefaultAssay(Data),group.by.vars = "sample",max.iter.harmony = 10000,max.iter.cluster = 10000)
 		}
 
 	}
 }
 
-if ("!{WNN}"!="") {
+if ("${WNN}"!="") {
 original.assay=DefaultAssay(Data)
 
-DefaultAssay(Data)="!{WNN}"
+DefaultAssay(Data)="${WNN}"
 
 Data=NormalizeData(Data,normalization.method = "CLR",margin=2)
 
@@ -1086,7 +1090,7 @@ Data=ScaleData(Data)
 Data=RunPCA(Data,reduction.name = "wpca")
 
 if (Multi_sample==1) {
-	Data=RunHarmony(Data,group.by.vars = "sample",assay.use = "!{WNN}",reduction = "wpca",reduction.save = "wharmony")
+	Data=RunHarmony(Data,group.by.vars = "sample",assay.use = "${WNN}",reduction = "wpca",reduction.save = "wharmony")
 
 }
 
@@ -1094,42 +1098,9 @@ DefaultAssay(Data)=original.assay
 
 }
 
-
-
-
-#if (DefaultAssay(Data)=="SCT"){
-#
-#if (length(unique(Data$sample))==1) {
-#	Data=RunPCA(Data,npcs=100)
-#} else {
-#	Data <- SplitObject(Data, split.by = "sample")
-#	variable.features=SelectIntegrationFeatures(object.list = Data, nfeatures = as.numeric(varFeatures))
-#	Data <- merge(Data[[1]],Data[-1])
-#	VariableFeatures(Data) <- variable
-#	if (all(Data[["percent.mt"]]==0)) {
-#		Data <- ScaleData(Data)
-#	} else {
-#		Data <- ScaleData(Data,vars.to.regress="percent.mt")
-#	}
-#
-#	Data=RunPCA(Data,npcs=100)
-#	Data=RunHarmony(Data,assay.use = DefaultAssay(Data),group.by.vars = "sample",max.iter.harmony = 10000,max.iter.cluster = 10000)
-#}
-#} else {
-#	Data <- FindVariableFeatures(Data,selection.method=selmethod,nfeatures=as.numeric(varFeatures))
-#	if (all(Data[["percent.mt"]]==0)) {
-#		Data <- ScaleData(Data)
-#	} else {
-#		Data <- ScaleData(Data,vars.to.regress="percent.mt")
-#	}
-#	Data=RunPCA(Data,npcs=100)
-#	if (length(unique(Data$sample))>1) {
-#		Data=RunHarmony(Data,assay.use = DefaultAssay(Data),group.by.vars = "sample",max.iter.harmony = 10000,max.iter.cluster = 10000)
-#	}
-#}
 saveRDS(Data,"Reduced_and_Corrected.rds")
 
-'''
+"""
 
 
 }
@@ -1236,48 +1207,116 @@ input:
  path seurat_object
 
 output:
- path "Data.loom" ,optional:true  ,emit:g36_30_outputFileOut00 
+ path "Data.loom" ,optional:true  ,emit:g36_30_outputFileOut00_g_572 
 
 container "quay.io/viascientific/scrna_seurat:2.0"
 
-shell:
+script:
 Generate_loom_file = params.scRNA_Analysis_Module_SCEtoLOOM.Generate_loom_file
-
-'''
+"""
 #!/usr/bin/env Rscript
 
 #library
 library(Seurat)
-
-if (as.logical("!{Generate_loom_file}")) {
-	
-Data=readRDS("!{seurat_object}")
-
-
+ 
+if (as.logical("${Generate_loom_file}") || as.logical("${params.run_pySCENIC == 'yes'}")) {
+    
+Data=readRDS("${seurat_object}")
 
 annotation=read.csv("https://huggingface.co/datasets/ctheodoris/Genecorpus-30M/raw/main/example_input_files/gene_info_table.csv",header = T,row.names = 1)
-annotation=annotation[annotation$gene_name%in%names(table(annotation$gene_name))[table(annotation$gene_name)==1],]
-rownames(annotation)=annotation$gene_name
+annotation=annotation[annotation\$gene_name%in%names(table(annotation\$gene_name))[table(annotation\$gene_name)==1],]
+rownames(annotation)=annotation\$gene_name
 metadata=Data@meta.data
-matrix=Data@assays$RNA@counts
-
+matrix=Data@assays\$RNA@counts
 matrix=matrix[rowSums(matrix)>0,]
-
 matrix=matrix[intersect(rownames(matrix),rownames(annotation)),]
-
 annotation=annotation[intersect(rownames(matrix),rownames(annotation)),]
-
-rownames(matrix)=annotation$ensembl_id
 matrix=matrix[rownames(matrix)[order(rownames(matrix),decreasing = F)],]
-
 NewData=CreateSeuratObject(matrix,meta.data = metadata)
-
+NewData[["RNA"]]@meta.features\$ensembl_id=annotation[rownames(NewData),"ensembl_id"]
 NewData.loom <- SeuratDisk::as.loom(NewData, filename = "Data.loom", verbose = FALSE)
+
+}
+"""
 
 
 }
-'''
 
+//* params.db_feather =  ""  //* @input
+//* params.motif_db =  ""  //* @input
+//* params.tf_lists =  ""  //* @input
+
+
+//* autofill
+if ($HOSTNAME == "default"){
+    $CPU  = 16
+    $MEMORY = 20
+}
+//* platform
+//* platform
+//* autofill
+
+process pySCENIC {
+
+publishDir params.outdir, mode: 'copy', saveAs: {filename -> if (filename =~ /pyscenic_out.zip$/) "pySCENIC_out/$filename"}
+publishDir params.outdir, mode: 'copy', saveAs: {filename -> if (filename =~ /scenic_integrated.loom$/) "pySCENIC_loom/$filename"}
+input:
+ path loom_file
+ path db_feather
+ path motif_db
+ path tf_lists
+
+output:
+ path "pyscenic_out.zip"  ,emit:g_572_zipFile00 
+ path "scenic_integrated.loom"  ,emit:g_572_loom11 
+
+container 'quay.io/viascientific/pyscenic:1.0.1'
+
+when:
+params.run_pySCENIC == "yes"
+
+script:
+
+threads = task.cpus
+mask_dropouts = params.pySCENIC.mask_dropouts
+
+mask_dropouts_option = mask_dropouts ? '--mask_dropouts' : ''
+auc_threshold = params.pySCENIC.auc_threshold
+"""
+
+f_db_path=${db_feather}
+f_db_names=\$(echo "\$f_db_path"/*.feather)
+
+f_motif_path=${motif_db}
+f_tfs=${tf_lists}
+
+pyscenic grn ${loom_file} ${tf_lists} -o adjacencies.csv --num_workers ${threads}
+
+
+pyscenic ctx adjacencies.csv \
+    \$f_db_names \
+    --annotations_fname ${motif_db} \
+    --expression_mtx_fname ${loom_file} \
+    --output regulons.csv \
+    ${mask_dropouts_option} \
+    --num_workers ${threads}
+
+pyscenic aucell \
+    ${loom_file} \
+    regulons.csv \
+    --output pyscenic_out.loom \
+    --num_workers ${threads} \
+    --auc_threshold ${auc_threshold}
+
+integrate_pyscenic_output.py \
+    -i ${loom_file} \
+    -p pyscenic_out.loom \
+    -o scenic_integrated.loom \
+    --export_auc_csv aucell_matrix.csv
+
+zip pyscenic_out.zip adjacencies.csv regulons.csv aucell_matrix.csv
+
+"""
 
 }
 
@@ -1421,7 +1460,7 @@ input:
 output:
  path "processed_adata.h5ad"  ,emit:g57_12_h5ad00 
 
-container 'quay.io/mustafapir/scvelo_shiny:1.0.2'
+container 'quay.io/mustafapir/scvelo_shiny:1.1.0'
 
 when:
 params.run_velocity == "yes"
@@ -1563,7 +1602,12 @@ g36_22_h5ad_file01_g57_12 = scRNA_Analysis_Module_Create_h5ad.out.g36_22_h5ad_fi
 
 
 scRNA_Analysis_Module_SCEtoLOOM(g36_19_rdsFile10_g36_30)
-g36_30_outputFileOut00 = scRNA_Analysis_Module_SCEtoLOOM.out.g36_30_outputFileOut00
+g36_30_outputFileOut00_g_572 = scRNA_Analysis_Module_SCEtoLOOM.out.g36_30_outputFileOut00_g_572
+
+
+pySCENIC(g36_30_outputFileOut00_g_572,g_576_1_g_572,g_577_2_g_572,g_578_3_g_572)
+g_572_zipFile00 = pySCENIC.out.g_572_zipFile00
+g_572_loom11 = pySCENIC.out.g_572_loom11
 
 
 scRNA_Analysis_Module_filter_summary(g36_0_outFileTSV20_g36_34.collect())
