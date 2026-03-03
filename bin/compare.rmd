@@ -1,0 +1,1093 @@
+---
+title: "CellChat Analysis Report"
+params:
+  file: NULL
+output:
+  html_document:
+    theme:
+      version: 5
+      bootswatch: lumen
+    toc: true
+    toc_depth: 2
+runtime: shiny
+---
+
+<style type="text/css">
+.main-container {
+  max-width: 1200px;
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE
+)
+library(CellChat)
+library(patchwork)
+library(downloadthis)
+```
+
+# Introduction
+This report presents a comprehensive analysis of cell–cell communication using the CellChat package. Each section includes visualizations and tables to illustrate key interaction patterns and signaling changes between groups.
+
+```{r load-cellchat, results='hide'}
+cellchat_list <- readRDS(params$file)
+
+cellchat <- mergeCellChat(cellchat_list, add.names = names(cellchat_list), cell.prefix = TRUE)
+
+cellchat_list <- lapply(cellchat_list, netAnalysis_computeCentrality)
+
+# cellchat <- readRDS(params$merged_file)
+```
+
+<!-- # Interaction Comparison {.tabset} -->
+<!-- We compare the number of interactions and the interaction weights between two experimental groups. -->
+
+<!-- ## Total number of interactions -->
+<!-- ```{r compare-count} -->
+<!-- selectInput( -->
+<!--   'measure', label = 'Number of bins:', -->
+<!--   choices = c("count","weight"), selected = "count" -->
+<!-- ) -->
+<!-- renderPlot({ -->
+<!--   compareInteractions(cellchat, show.legend = FALSE, group = c(1, 2), measure = input$measure) -->
+<!-- }) -->
+
+<!-- #plot(gg1) -->
+<!-- ``` -->
+
+# Total number of interactions
+
+<div style="width:100%; display:flex; justify-content:space-between; align-items:flex-start;">
+  <div style="width:48%; text-align:center;">
+    
+```{r echo=FALSE, fig.width=6, fig.height=5}
+    gg1 <- compareInteractions(cellchat, show.legend=FALSE, group=c(1,2))
+    gg1
+```
+
+```{r echo=FALSE}
+download_this(
+  gg1,
+  output_name = "cellchat_interactions",
+  output_extension = ".pdf",
+  button_label = "Download PDF",
+  button_type = "default",
+  self_contained = FALSE,
+  ggsave_args = list(width = 8, height = 6, dpi = 300)
+)
+
+download_this(
+  gg1,
+  output_name = "cellchat_interactions",
+  output_extension = ".svg",
+  button_label = "Download SVG",
+  button_type = "default",
+  self_contained = FALSE,
+  ggsave_args = list(width = 8, height = 6, dpi = 300)
+)
+```
+  </div>
+
+  <div style="width:48%; text-align:center;">
+```{r echo=FALSE, fig.width=6, fig.height=5}
+gg2 <- compareInteractions(cellchat, show.legend=FALSE, group=c(1,2), measure="weight")
+print(gg2)
+```
+
+```{r echo=FALSE}
+download_this(
+  gg2,
+  output_name = "cellchat_interactions_weight",
+  output_extension = ".pdf",
+  button_label = "Download PDF",
+  button_type = "default",
+  has_icon = TRUE,
+  icon = "fa fa-save"
+)
+
+download_this(
+  gg2,
+  output_name = "cellchat_interactions_weight",
+  output_extension = ".svg",
+  button_label = "Download SVG",
+  button_type = "default",
+  has_icon = TRUE,
+  icon = "fa fa-save"
+)
+```
+  </div>
+</div>
+
+# Number of interactions and interaction strength among different cell populations {.tabset}
+
+This section visualizes differences in network structure between groups using raw counts and weighted measures.
+
+## Circle Plot across two datasets
+
+<div style="width:100%; display:flex; justify-content:space-between; align-items:flex-start;">
+  <div style="width:48%; text-align:center;">
+
+```{r diff-count, fig.width=6, fig.height=5}
+p1 <- netVisual_diffInteraction(cellchat, weight.scale = TRUE, measure = "count", margin = 0)
+print(p1)
+```
+
+```{r echo=FALSE}
+tmp_pdf <- "circleplot_interaction_count.pdf"
+pdf(tmp_pdf,
+    width  = 8,   # 8" × 300 dpi
+    height = 7
+    )
+replayPlot(p1)
+invisible(dev.off())
+
+download_file(
+  path           = "circleplot_interaction_count.pdf",
+  output_name      = "circleplot_interaction_count",
+  button_label     = "Download PDF",
+  button_type      = "default",
+  self_contained   = FALSE
+)
+
+tmp_svg <- "circleplot_interaction_count.svg"
+svg(tmp_svg,
+    width  = 8,   # 8" × 300 dpi
+    height = 7)
+replayPlot(p1)
+invisible(dev.off())
+
+download_file(
+  path           = "circleplot_interaction_count.svg",
+  output_name      = "circleplot_interaction_count",
+  button_label     = "Download SVG",
+  button_type      = "default",
+  self_contained   = FALSE
+)
+
+```
+  </div>
+
+  <div style="width:48%; text-align:center;">
+```{r echo=FALSE, fig.width=6, fig.height=5}
+p2 <- netVisual_diffInteraction(cellchat, weight.scale = TRUE, measure = "weight", margin = 0)
+print(p2)
+```
+
+```{r echo=FALSE}
+tmp_pdf2 <- "circleplot_interaction_weight.pdf"
+pdf(tmp_pdf2,
+    width  = 8 ,   # 8" × 300 dpi
+    height = 7)
+replayPlot(p2)
+invisible(dev.off())
+
+download_file(
+  path           = "circleplot_interaction_weight.pdf",
+  output_name      = "circleplot_interaction_weight",
+  button_label     = "Download PDF",
+  button_type      = "default",
+  self_contained   = FALSE
+)
+
+tmp_svg2 <- "circleplot_interaction_weight.svg"
+svg(tmp_svg2,
+    width  = 8,   # 8" × 300 dpi
+    height = 7)
+replayPlot(p2)
+invisible(dev.off())
+
+download_file(
+  path           = "circleplot_interaction_weight.svg",
+  output_name      = "circleplot_interaction_weight",
+  button_label     = "Download SVG",
+  button_type      = "default",
+  self_contained   = FALSE
+)
+
+```
+  </div>
+</div>
+
+## Heatmap across two datasets
+We generate circle plots of interaction networks for each sample in the provided list. The dot sizes are scaled by the maximum interaction weight.
+
+<div style="width:100%; display:flex; justify-content:space-between; align-items:flex-start;">
+  <div style="width:48%; text-align:center;">
+
+```{r diff-heatmap, fig.width=6, fig.height=5}
+library(ComplexHeatmap)
+
+h1 <- netVisual_heatmap(cellchat, measure = "count")
+print(h1)
+pdf("diff_heatmap_count.pdf",
+    width  = 7,   # 8" × 300 dpi
+    height = 6)      # res    = 300
+ComplexHeatmap::draw(h1)
+invisible(dev.off())
+
+svg("diff_heatmap_count.svg",
+    width  = 7,   # 8" × 300 dpi
+    height = 6)
+ComplexHeatmap::draw(h1)
+invisible(dev.off())
+```
+
+```{r echo=FALSE}
+download_file(
+  path        = "diff_heatmap_count.pdf",
+  output_name = "diff_heatmap_count",
+  button_label = "Download\nPDF",
+  button_type = "default",
+  self_contained = FALSE
+)
+
+download_file(
+  path        = "diff_heatmap_count.svg",
+  output_name = "diff_heatmap_count",
+  button_label = "Download \n SVG",
+  button_type = "default",
+  self_contained = FALSE
+)
+```
+  </div>
+
+  <div style="width:48%; text-align:center;">
+```{r diff-heatmap-weight, fig.width=6, fig.height=5}
+h2 <- netVisual_heatmap(cellchat, measure = "weight")
+print(h2)
+# png("diff_heatmap_weight.png",
+#     width  = 8 * 300,   # 8" × 300 dpi
+#     height = 6 * 300,
+#     res    = 300)
+# ComplexHeatmap::draw(h2)
+# invisible(dev.off())
+
+pdf("diff_heatmap_weight.pdf",
+    width  = 8,   # 8" × 300 dpi
+    height = 7)
+ComplexHeatmap::draw(h2)
+invisible(dev.off())
+
+svg("diff_heatmap_weight.svg",
+    width  = 8,   # 8" × 300 dpi
+    height = 7)
+ComplexHeatmap::draw(h2)
+invisible(dev.off())
+
+```
+
+```{r echo=FALSE}
+download_file(
+  path        = "diff_heatmap_weight.pdf",
+  output_name = "diff_heatmap_weight",
+  button_label = "Download \n PDF",
+  button_type = "default",
+  self_contained = FALSE
+)
+
+download_file(
+  path        = "diff_heatmap_weight.svg",
+  output_name = "diff_heatmap_weight",
+  button_label = "Download \n SVG",
+  button_type = "default",
+  self_contained = FALSE
+)
+
+```
+  </div>
+</div>
+
+## Between experimental groups
+ 
+<div style="width:100%; display:flex; justify-content:space-between; align-items:flex-start;">
+  <div style="width:48%; text-align:center;">
+  
+```{r circle-plot-1, fig.width=6, fig.height=5}
+# object.list <- setNames(list(cellchat.NL, cellchat.LS), c(s1, s2))
+object.list <- cellchat_list
+# compute max weight once
+weight.max <- getMaxWeight(object.list, attribute = c("idents", "count"))
+
+# render & save first plot
+
+nc1<-netVisual_circle(
+  object.list[[1]]@net$count,
+  weight.scale    = TRUE,
+  label.edge      = FALSE,
+  edge.weight.max = weight.max[2],
+  edge.width.max  = 12,
+  title.name      = paste0("Number of interactions – ", names(object.list)[1])
+)
+# png("circle_plot_1.png",
+#     width  = 8 * 300,
+#     height = 6 * 300,
+#     res    = 300)
+# 
+# replayPlot(nc1)
+# 
+# invisible(dev.off())
+
+pdf("circle_plot_1.pdf",
+    width  = 8,
+    height = 7)
+
+replayPlot(nc1)
+
+invisible(dev.off())
+
+svg("circle_plot_1.svg",
+    width  = 8,
+    height = 7)
+
+replayPlot(nc1)
+
+invisible(dev.off())
+```
+
+```{r echo=FALSE}
+download_file(
+  path           = "circle_plot_1.pdf",
+  output_name    = "circle_plot_1",
+  button_label   = "Download PDF",
+  button_type    = "default",
+  self_contained = FALSE
+)
+
+download_file(
+  path           = "circle_plot_1.svg",
+  output_name    = "circle_plot_1",
+  button_label   = "Download SVG",
+  button_type    = "default",
+  self_contained = FALSE
+)
+```
+  </div>
+  
+  <div style="width:48%; text-align:center;">
+```{r circle-plot-2, fig.width=6, fig.height=5}
+# reuse same max weight
+weight.max <- getMaxWeight(object.list, attribute = c("idents", "count"))
+
+# render & save second plot
+nc2<-netVisual_circle(
+  object.list[[2]]@net$count,
+  weight.scale    = TRUE,
+  label.edge      = FALSE,
+  edge.weight.max = weight.max[2],
+  edge.width.max  = 12,
+  title.name      = paste0("Number of interactions – ", names(object.list)[2])
+)
+# png("circle_plot_2.png",
+#     width  = 8 * 300,
+#     height = 6 * 300,
+#     res    = 300)
+# 
+# replayPlot(nc2)
+# 
+# invisible(dev.off())
+
+pdf("circle_plot_2.pdf",
+    width  = 8,
+    height = 7)
+
+replayPlot(nc2)
+
+invisible(dev.off())
+
+svg("circle_plot_2.svg",
+    width  = 8,
+    height = 7)
+
+replayPlot(nc2)
+
+invisible(dev.off())
+```
+
+```{r echo=FALSE}
+download_file(
+  path           = "circle_plot_2.pdf",
+  output_name    = "circle_plot_2",
+  button_label   = "Download PDF",
+  button_type    = "default",
+  self_contained = FALSE
+)
+
+download_file(
+  path           = "circle_plot_2.svg",
+  output_name    = "circle_plot_2",
+  button_label   = "Download SVG",
+  button_type    = "default",
+  self_contained = FALSE
+)
+```
+
+  </div>
+</div>
+
+
+## Circle plots for selected cell types {.tabset}
+
+```{r selectinput}
+
+selectizeInput(
+  inputId  = "levels",
+  label    = "Cell types (select up to three):",
+  choices  = levels(cellchat@idents$joint),
+  selected = levels(cellchat@idents$joint)[1:3],
+  multiple = TRUE,
+  options  = list(maxItems = 3)
+)
+
+```
+
+### Between experimental groups
+
+We merge interactions by major cell-type groups and visualize combined networks.
+
+```{r data-process}
+
+tagList(
+  div(class = "row",
+    lapply(seq_along(object.list), function(i) {
+      div(class = "col-md-6",
+        # Plot output
+        plotOutput(outputId = paste0("mergedPlot_", i), height = "400px"),
+        # Small spacer
+        tags$br(),
+        # Download button
+        div(class = "text-center",
+          downloadButton(
+            outputId = paste0("download_pdf_", i),
+            label    = "Download PDF"
+          ),
+          downloadButton(
+            outputId = paste0("download_svg_", i),
+            label    = "Download SVG"
+          )
+        ),
+        # Add some bottom margin so rows don't stick together
+        style = "margin-bottom: 30px;"
+      )
+    })
+  )
+)
+
+```
+
+
+```{r vis}
+grp <- reactive({
+  req(input$levels)
+  n_types <- length(levels(object.list[[1]]@idents))
+  n_groups <- length(input$levels)
+  each_val <- ceiling(n_types / n_groups)
+  factor(rep(input$levels, each = each_val)[seq_len(n_types)], levels = input$levels)
+})
+mergedList <- reactive({
+  lapply(object.list, mergeInteractions, grp())
+})
+wmax <- reactive({
+  getMaxWeight(
+    mergedList(),
+    slot.name   = c("idents", "net", "net"),
+    attribute   = c("idents", "count", "count.merged")
+  )
+})
+
+# 2) Loop to auto‐wire each plot + download
+invisible(
+  lapply(seq_along(object.list), function(i) {
+    local({
+      idx <- i
+      nm  <- names(object.list)[idx]
+  
+      # render the circle plot
+      output[[paste0("mergedPlot_", idx)]] <- renderPlot({
+        netVisual_circle(
+          mergedList()[[idx]]@net$count.merged,
+          weight.scale     = TRUE,
+          label.edge       = TRUE,
+          edge.weight.max  = wmax()[3],
+          edge.width.max   = 12,
+          title.name       = paste0("Merged interactions – ", nm)
+        )
+      })
+  
+      # download handler for that same plot
+      output[[paste0("download_pdf_", idx)]] <- downloadHandler(
+        filename = function() {
+          paste0("circle_plot_", nm, "_", Sys.Date(), ".pdf")
+        },
+        content = function(file) {
+          pdf(file, width = 6, height = 5)
+          netVisual_circle(
+            mergedList()[[idx]]@net$count.merged,
+            weight.scale     = TRUE,
+            label.edge       = TRUE,
+            edge.weight.max  = wmax()[3],
+            edge.width.max   = 12,
+            title.name       = paste0("Merged interactions – ", nm)
+          )
+          dev.off()
+        },
+        contentType = "application/pdf"
+      )
+      
+      output[[paste0("download_svg_", idx)]] <- downloadHandler(
+        filename = function() {
+          paste0("circle_plot_", nm, "_", Sys.Date(), ".svg")
+        },
+        content = function(file) {
+          svg(file, width = 6, height = 5)
+          netVisual_circle(
+            mergedList()[[idx]]@net$count.merged,
+            weight.scale     = TRUE,
+            label.edge       = TRUE,
+            edge.weight.max  = wmax()[3],
+            edge.width.max   = 12,
+            title.name       = paste0("Merged interactions – ", nm)
+          )
+          dev.off()
+        },
+        contentType = NA
+      )
+    })
+  })
+)
+
+
+```
+
+```{r merge-interactions}
+# mergedCellchat <- reactiveVal(NULL)
+# 
+# plotOutput("mergedPlots", height = "400px")
+# 
+# # --- Server logic ----
+# output$mergedPlots <- renderPlot({
+#   # ensure inputs are available
+#   req(input$levels, 4)
+#   
+#   # build the grouping factor
+#   grp <- factor(
+#     rep(input$levels, each = 4),
+#     levels = input$levels
+#   )
+#   
+#   # merge interactions on the fly
+#   merged.list <- lapply(object.list, function(x) {
+#     mergeInteractions(x, grp)
+#   })
+#   
+#   # (re‐)build the combined CellChat if you need it later
+#   cellchat.m <<- mergeCellChat(merged.list, add.names = names(merged.list))
+#   mergedCellchat(cellchat.m)
+#   # compute the max weight for scaling
+#   wmax <- getMaxWeight(
+#     merged.list,
+#     slot.name = c("idents","net","net"),
+#     attribute = c("idents","count","count.merged")
+#   )
+#   
+#   netVisual_circle(
+#       merged.list[[1]]@net$count.merged,
+#       weight.scale     = TRUE,
+#       label.edge       = TRUE,
+#       edge.weight.max  = wmax[3],
+#       edge.width.max   = 12,
+#       title.name       = paste0("Merged interactions – ", names(merged.list)[i])
+#   )
+#   
+#   
+# })
+# 
+# downloadButton("download_plots_pdf", "Download All Plots as PDF")
+# 
+# output$download_plots_pdf <- downloadHandler(
+#   filename = function() {
+#     paste0("circle_plots_", Sys.Date(), ".pdf")
+#   },
+#   content = function(file) {
+#     req(input$pathway_circle)
+#     # open PDF device
+#     pdf(file, width = 6, height = 5)
+#     # draw one page per pathway
+#     netVisual_circle(
+#         merged.list[[1]]@net$count.merged,
+#         weight.scale     = TRUE,
+#         label.edge       = TRUE,
+#         edge.weight.max  = wmax[3],
+#         edge.width.max   = 12,
+#         title.name       = paste0("Merged interactions – ", names(merged.list)[i])
+#     )
+#     dev.off()
+#   },
+#   contentType = "application/pdf"
+# )
+# 
+# # Second plot
+# mergedCellchat <- reactiveVal(NULL)
+# 
+# plotOutput("mergedPlots2", height = "400px")
+# 
+# # --- Server logic ----
+# output$mergedPlots2 <- renderPlot({
+#   # ensure inputs are available
+#   req(input$levels, 4)
+#   
+#   # build the grouping factor
+#   grp <- factor(
+#     rep(input$levels, each = 4),
+#     levels = input$levels
+#   )
+#   
+#   # merge interactions on the fly
+#   merged.list <- lapply(object.list, function(x) {
+#     mergeInteractions(x, grp)
+#   })
+#   
+#   # (re‐)build the combined CellChat if you need it later
+#   cellchat.m <<- mergeCellChat(merged.list, add.names = names(merged.list))
+#   mergedCellchat(cellchat.m)
+#   # compute the max weight for scaling
+#   wmax <- getMaxWeight(
+#     merged.list,
+#     slot.name = c("idents","net","net"),
+#     attribute = c("idents","count","count.merged")
+#   )
+#   
+#   netVisual_circle(
+#       merged.list[[2]]@net$count.merged,
+#       weight.scale     = TRUE,
+#       label.edge       = TRUE,
+#       edge.weight.max  = wmax[3],
+#       edge.width.max   = 12,
+#       title.name       = paste0("Merged interactions – ", names(merged.list)[i])
+#   )
+#   
+#   
+# })
+# 
+# downloadButton("download_plots_pdf2", "Download All Plots as PDF")
+# 
+# output$download_plots_pdf2 <- downloadHandler(
+#   filename = function() {
+#     paste0("circle_plots_", Sys.Date(), ".pdf")
+#   },
+#   content = function(file) {
+#     req(input$pathway_circle)
+#     # open PDF device
+#     pdf(file, width = 6, height = 5)
+#     # draw one page per pathway
+#     netVisual_circle(
+#         merged.list[[2]]@net$count.merged,
+#         weight.scale     = TRUE,
+#         label.edge       = TRUE,
+#         edge.weight.max  = wmax[3],
+#         edge.width.max   = 12,
+#         title.name       = paste0("Merged interactions – ", names(merged.list)[i])
+#     )
+#     dev.off()
+#   },
+#   contentType = "application/pdf"
+# )
+
+```
+
+### Merged analysis
+
+We highlight changes in merged interaction networks between conditions.
+
+```{r diff-merged}
+# renderPlot({
+#   par(mfrow = c(1, 2), xpd = TRUE)
+# 
+#   netVisual_diffInteraction(
+#     mergedCellchat(),
+#     weight.scale = TRUE,
+#     measure = "count.merged",
+#     label.edge = TRUE
+#   )
+#   
+#   netVisual_diffInteraction(
+#     mergedCellchat(),
+#     weight.scale = TRUE,
+#     measure = "weight.merged",
+#     label.edge = TRUE
+#   )
+# })
+
+tagList(
+  div(class = "row",
+    # Count–merged plot + download
+    div(class = "col-md-6",
+      plotOutput("mergedDiff_count", height = "400px"),
+      tags$br(),
+      div(class = "text-center",
+        downloadButton("download_diff_count_pdf", "Download PDF"),
+        downloadButton("download_diff_count_svg", "Download SVG")
+      ),
+      style = "margin-bottom: 30px;"
+    ),
+    # Weight–merged plot + download
+    div(class = "col-md-6",
+      plotOutput("mergedDiff_weight", height = "400px"),
+      tags$br(),
+      div(class = "text-center",
+        downloadButton("download_diff_weight_pdf", "Download PDF"),
+        downloadButton("download_diff_weight_svg", "Download SVG")
+      ),
+      style = "margin-bottom: 30px;"
+    )
+  )
+)
+
+mergedCellchat <- reactiveVal(NULL)
+observe({
+  req(input$levels)
+  n_types <- length(levels(object.list[[1]]@idents))
+  n_groups <- length(input$levels)
+  each_val <- ceiling(n_types / n_groups)
+  grp <- factor(rep(input$levels, each = each_val)[seq_len(n_types)], levels = input$levels)
+  merged.list <- lapply(object.list, mergeInteractions, grp)
+  cellchat.m <- mergeCellChat(merged.list, add.names = names(merged.list))
+  mergedCellchat(cellchat.m)
+})
+
+# 1) Count–merged plot
+output$mergedDiff_count <- renderPlot({
+  req(mergedCellchat())
+  netVisual_diffInteraction(
+    mergedCellchat(),
+    weight.scale = TRUE,
+    measure      = "count.merged",
+    label.edge   = TRUE
+  )
+})
+output$download_diff_count_pdf <- downloadHandler(
+  filename = function() paste0("diff_count_", Sys.Date(), ".pdf"),
+  content = function(file) {
+    pdf(file, width = 6, height = 5)
+    netVisual_diffInteraction(
+      mergedCellchat(),
+      weight.scale = TRUE,
+      measure      = "count.merged",
+      label.edge   = TRUE
+    )
+    dev.off()
+  },
+  contentType = "application/pdf"
+)
+
+output$download_diff_count_svg <- downloadHandler(
+  filename = function() paste0("diff_count_", Sys.Date(), ".svg"),
+  content = function(file) {
+    svg(file, width = 6, height = 5)
+    netVisual_diffInteraction(
+      mergedCellchat(),
+      weight.scale = TRUE,
+      measure      = "count.merged",
+      label.edge   = TRUE
+    )
+    dev.off()
+  },
+  contentType = NA
+)
+
+# 2) Weight–merged plot
+output$mergedDiff_weight <- renderPlot({
+  req(mergedCellchat())
+  netVisual_diffInteraction(
+    mergedCellchat(),
+    weight.scale = TRUE,
+    measure      = "weight.merged",
+    label.edge   = TRUE
+  )
+})
+
+output$download_diff_weight_pdf <- downloadHandler(
+  filename = function() paste0("diff_weight_", Sys.Date(), ".pdf"),
+  content = function(file) {
+    pdf(file, width = 6, height = 5)
+    netVisual_diffInteraction(
+      mergedCellchat(),
+      weight.scale = TRUE,
+      measure      = "weight.merged",
+      label.edge   = TRUE
+    )
+    dev.off()
+  },
+  contentType = "application/pdf"
+)
+
+output$download_diff_weight_svg <- downloadHandler(
+  filename = function() paste0("diff_weight_", Sys.Date(), ".svg"),
+  content = function(file) {
+    svg(file, width = 6, height = 5)
+    netVisual_diffInteraction(
+      mergedCellchat(),
+      weight.scale = TRUE,
+      measure      = "weight.merged",
+      label.edge   = TRUE
+    )
+    dev.off()
+  },
+  contentType = NA
+)
+```
+
+# Compare the major sources and targets in a 2D space {.tabset}
+
+Scatter plots identify major signaling senders and receivers across datasets.
+
+## Cell populations with significant changes between conditions
+
+```{r signaling-role, fig.height=5, fig.width=10}
+# num.link <- sapply(object.list, function(x) {
+#   rowSums(x@net$count) + colSums(x@net$count) - diag(x@net$count)
+# })
+# weight.MinMax <- c(min(num.link), max(num.link))
+# gg <- lapply(seq_along(object.list), function(i) {
+#   netAnalysis_signalingRole_scatter(
+#     object.list[[i]],
+#     title = names(object.list)[i],
+#     weight.MinMax = weight.MinMax
+#   )
+# })
+# patchwork::wrap_plots(plots = gg)
+
+
+num.link     <- sapply(object.list, function(x) {
+  rowSums(x@net$count) + colSums(x@net$count) - diag(x@net$count)
+})
+weight.MinMax <- c(min(num.link), max(num.link))
+gg <- lapply(seq_along(object.list), function(i) {
+  netAnalysis_signalingRole_scatter(
+    object.list[[i]],
+    title         = names(object.list)[i],
+    weight.MinMax = weight.MinMax
+  )
+})
+
+```
+
+<div style="width:100%; display:flex; justify-content:space-between; align-items:flex-start;">
+  <div style="width:48%; text-align:center;">
+
+```{r, scatter-plots-1, fig.width=6, fig.height=5}
+
+gg[[1]]
+
+download_this(
+  gg[[1]],
+  output_name = paste0("scatter_pdf_", 1),
+  output_extension = ".pdf",    
+  button_label = "Download PDF",
+  button_type = "default",
+  self_contained = FALSE,
+  ggsave_args = list(width = 4, height = 3, dpi = 300)
+)
+
+download_this(
+  gg[[1]],
+  output_name = paste0("scatter_svg_", 1),
+  output_extension = ".svg",    
+  button_label = "Download SVG",
+  button_type = "default",
+  self_contained = FALSE,
+  ggsave_args = list(width = 4, height = 3, dpi = 300)
+)
+
+```
+
+  </div>
+
+  <div style="width:48%; text-align:center;">
+  
+```{r, scatter-plots-2, fig.width=6, fig.height=5}
+
+gg[[2]]
+
+download_this(
+  gg[[2]],
+  output_name = paste0("scatter_pdf_", 2),
+  output_extension = ".pdf",    
+  button_label = "Download PDF",
+  button_type = "default",
+  self_contained = FALSE,
+  ggsave_args = list(width = 4, height = 3, dpi = 300)
+)
+
+download_this(
+  gg[[2]],
+  output_name = paste0("scatter_svg_", 2),
+  output_extension = ".svg",    
+  button_label = "Download SVG",
+  button_type = "default",
+  self_contained = FALSE,
+  ggsave_args = list(width = 4, height = 3, dpi = 300)
+)
+
+```
+
+  </div>
+</div>
+
+
+<!-- ## Differential Signaling Changes {.tabset} -->
+
+<!-- We assess changes in incoming and outgoing signaling for selected cell types. -->
+
+<!-- ## Inflam. DC -->
+
+<!-- ```{r signaling-changes-dc} -->
+
+<!-- gg1 <- netAnalysis_signalingChanges_scatter( -->
+
+<!--   cellchat, -->
+
+<!--   idents.use = "Inflam. DC", -->
+
+<!--   signaling.exclude = "MIF" -->
+
+<!-- ) -->
+
+<!-- patchwork::wrap_plots(plots = gg1) -->
+
+<!-- ``` -->
+
+<!-- ## cDC1 -->
+
+<!-- ```{r signaling-changes-cdc1} -->
+
+<!-- gg2 <- netAnalysis_signalingChanges_scatter( -->
+
+<!--   cellchat, -->
+
+<!--   idents.use = "cDC1", -->
+
+<!--   signaling.exclude = c("MIF") -->
+
+<!-- ) -->
+
+<!-- patchwork::wrap_plots(plots = gg2) -->
+
+<!-- ``` -->
+
+## Signalling changes of specific cell populations
+
+```{r signaling-changes-tabs, echo=FALSE}
+# 1) UI: selection + placeholder for our tab panel
+selectInput(
+  inputId  = "idents_use",
+  label    = "Select cell types:",
+  choices  = levels(cellchat@idents$joint),
+  selected = levels(cellchat@idents$joint)[1:3],
+  multiple = TRUE
+)
+uiOutput("signalingTabs")
+
+# 2) Server: build tabs with plot + download buttons
+output$signalingTabs <- renderUI({
+  req(input$idents_use)
+  
+  tabs <- lapply(input$idents_use, function(id) {
+    safe_id   <- make.names(id)
+    plot_name <- paste0("sigPlot_", safe_id)
+    pdf_btn   <- paste0("dl_pdf_", safe_id)
+    svg_btn   <- paste0("dl_svg_", safe_id)
+    
+    tabPanel(
+      title = id,
+      # plot placeholder
+      plotOutput(plot_name, height = "400px"),
+      
+      # centered download buttons
+      tags$div(
+        style = "text-align: center; margin-top: 8px;",
+        downloadButton(pdf_btn, "Download PDF"),
+        downloadButton(svg_btn, "Download SVG")
+      )
+    )
+  })
+  
+  do.call(tabsetPanel, c(id = "tabs", tabs))
+})
+
+# 3) Server: render plots and wire up downloadHandlers
+observeEvent(input$idents_use, {
+  lapply(input$idents_use, function(id) {
+    local({
+      this_id   <- id
+      safe_id   <- make.names(this_id)
+      plot_name <- paste0("sigPlot_", safe_id)
+      pdf_btn   <- paste0("dl_pdf_", safe_id)
+      svg_btn   <- paste0("dl_svg_", safe_id)
+      
+      # render the plot
+      output[[plot_name]] <- renderPlot({
+        netAnalysis_signalingChanges_scatter(
+          mergedCellchat(),
+          dot.size          = 5,
+          label.size        = 4,
+          font.size         = 13,
+          font.size.title   = 13,
+          idents.use        = this_id,
+          signaling.exclude = "MIF"
+        ) %>% wrap_plots()
+      })
+      
+      # PDF download handler
+      output[[pdf_btn]] <- downloadHandler(
+        filename = function() paste0("SignalingChanges_", this_id, ".pdf"),
+        content  = function(file) {
+          ggsave(
+            filename = file,
+            plot     = netAnalysis_signalingChanges_scatter(
+              mergedCellchat(),
+              dot.size          = 5,
+              label.size        = 4,
+              font.size         = 13,
+              font.size.title   = 13,
+              idents.use        = this_id,
+              signaling.exclude = "MIF"
+            ) %>% wrap_plots(),
+            device   = "pdf",
+            width    = 10,
+            height   = 6
+          )
+        }
+      )
+      
+      # PNG download handler
+      output[[svg_btn]] <- downloadHandler(
+        filename = function() paste0("SignalingChanges_", this_id, ".svg"),
+        content  = function(file) {
+          ggsave(
+            filename = file,
+            plot     = netAnalysis_signalingChanges_scatter(
+              mergedCellchat(),
+              dot.size          = 5,
+              label.size        = 4,
+              font.size         = 13,
+              font.size.title   = 13,
+              idents.use        = this_id,
+              signaling.exclude = "MIF"
+            ) %>% wrap_plots(),
+            device   = "svg",
+            dpi      = 300,
+            width    = 10,
+            height   = 6
+          )
+        }
+      )
+      
+    })
+  })
+})
+```

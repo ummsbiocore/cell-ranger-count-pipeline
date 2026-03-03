@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-
+ 
 import sys, os, argparse, subprocess, csv
 from collections import defaultdict
 from textwrap import dedent
 from multiprocessing import Pool
+
 
 def main(args):
 
@@ -49,6 +50,8 @@ def print_header(args):
 	params:
 	  output_prefix: "{}"
 	  input_file: "{}"
+	  input_well: "{}"
+	  input_tags: "{}"
 	  metadata_file: "{}"
 	  min_genes: {}
 	  max_genes: {}
@@ -62,8 +65,9 @@ def print_header(args):
 	  doublet_percentage: {}
 	  normalization_method: "{}"
 	  variable_features: {}
+	  doublet_tool: "{}"
 	---
-	''').format(args.output_prefix, args.input_file, args.metadata_file, args.min_genes, args.max_genes, args.min_UMIs, args.max_UMIs, args.percent_mitochondrial_cutoff, args.percent_ribosomal_cutoff, args.remove_mitochondrial_genes, args.remove_ribosomal_genes, args.doublet_removal, args.doublet_percentage, args.normalization_method, args.variable_features).strip())
+	''').format(args.output_prefix, args.input_file, args.input_well, args.input_tags, args.metadata_file, args.min_genes, args.max_genes, args.min_UMIs, args.max_UMIs, args.percent_mitochondrial_cutoff, args.percent_ribosomal_cutoff, args.remove_mitochondrial_genes, args.remove_ribosomal_genes, args.doublet_removal, args.doublet_percentage, args.normalization_method, args.variable_features, args.doublet_tool).strip())
 
 def setup():
 	
@@ -78,7 +82,9 @@ def setup():
 	  library(DoubletFinder)
 	  library(clustree)
 	  library(gridExtra)
+	  library(scDblFinder)
 	})
+	
 	
 	get_present_pseudogenes <- function(seurat_object, pseudogenes) {
 	  # Ensure that the Seurat object has rownames (gene names)
@@ -110,15 +116,33 @@ def read_input():
 	If the data is a raw Count Matrix, meaning that the empty droplets are not filtered out by cellranger pipeline or Drop-Seq pipeline, the emptyDrops algorithm from DropUtils will be run in order to remove the empty droplets.
 	
 	```{r read in samples, message=FALSE}
-	data = Read10X_h5(params$input_file)
-	
-	MultiModal=FALSE
-	if (is.list(data)) {
-	  MultiModal = TRUE
-	  Raw = data
-	  data = data[["Gene Expression"]]  
+	sample_data = Read10X_h5(params$input_file)
+	if(is.list(sample_data)){
+		sample_data <- sample_data[["Gene Expression"]]
 	}
 	
+	MultiModal=FALSE
+	if (!is.null(params$input_well) && params$input_well != "" && params$input_well != "None" && file.exists(params$input_well)) {
+		data = Read10X_h5(params$input_well)
+		MultiModal = TRUE
+		Raw = data
+		data = data[["Gene Expression"]]
+	} else {
+		data <- sample_data
+	}
+	
+	CellRangerMultiModal = FALSE
+	if (!is.null(params$input_tags) && params$input_tags != "" && file.exists(params$input_tags)) {
+		tags <- read.table(params$input_tags, sep = ",", header = TRUE)
+		tags$GT <- ifelse(tags$num_features > 1, "Doublet", "Singlet")
+		rownames(tags) <- tags$cell_barcode
+		data <- data[, tags$cell_barcode]
+
+		CellRangerMultiModal = TRUE
+	} else {
+		CellRangerMultiModal = FALSE
+	}
+
 	#If any cells with 0 in the dataset, raw input is true
 	if (any(colSums(data)==0)) {
 		RawInput = TRUE
@@ -148,8 +172,36 @@ def read_input():
 	    data = data[!rownames(data) %in %mt.genes,]
 	  }
 	}
-	
-	if (RawInput) {
+
+	# if (RawInput && !CellRangerMultiModal) {
+
+	#   # empty = emptyDrops(data[!rownames(data) %in% mt.genes,])
+	# 	empty <- tryCatch({
+	# 		emptyDrops(data[!rownames(data) %in% mt.genes,])
+	# 	}, error = function(e) {
+	# 		message("emptyDrops failed: ", e$message)
+	# 		return(NULL)
+	# 	})
+	# 	if (!is.null(empty)) {
+
+	# 		empty = data.frame(empty)
+	# 		empty = empty[!is.na(empty$FDR),]
+	# 		empty$DropIdentity = ifelse(empty$FDR<0.001, yes="Non Empty", no="Empty")
+			
+	# 		ggplot(empty, aes(x = DropIdentity, y = Total)) +
+	# 			geom_bar(stat = 'identity') +
+	# 			xlab("Droplet classification") +
+	# 			ylab("Number of UMIs per cell") +
+	# 			ggtitle("Empty Droplet classification")
+			
+	# 		data=data[, rownames(empty)[empty$FDR<0.05]]
+	# 	} else {
+	# 		data <- sample_data
+	# 	}
+	# }
+
+	if (RawInput && !CellRangerMultiModal) {
+
 	  empty = emptyDrops(data[!rownames(data) %in% mt.genes,])
 	  empty = data.frame(empty)
 	  empty = empty[!is.na(empty$FDR),]
@@ -163,10 +215,13 @@ def read_input():
 	
 	  data=data[, rownames(empty)[empty$FDR<0.05]]
 	}
-	
-	data = CreateSeuratObject(data)
+	data_matrix = data
+
+	# data is sample data from here
+	data = CreateSeuratObject(sample_data)
 	data$sample = params$output_prefix
 	data$orig.ident = params$output_prefix
+	
 	
 	if (any(grepl("^MT-", rownames(data))) | any(grepl("^mt-", rownames(data)))) {
 	    if (any(grepl("^MT-",rownames(data)))) {
@@ -318,75 +373,126 @@ def doublet_removal():
 	
 	return(dedent(
 	'''
+
 	# Doublet Classification {.tabset}
-	
+
 	Doublets, or sometimes called multiplets, are the droplets which include two or more cells. Including these droplets in the downstream analysis will bias the results because these droplets include gene expression profiles of more than 1 cell. DoubletFinder is used to classify the doublet. Doublet classification can be turned off in the run settings.
-	
+
 	```{r Doublet Removal, message=FALSE, results=FALSE, warning=FALSE, fig.show='hide'}
-	
+
+	# doublet_removal_logical <- ifelse(params$doublet_removal == "true", TRUE, FALSE)
 	DoubletRemovalHandle=as.logical(params$doublet_removal)
 	
-	data$Doublet.Classification="SingleLet"
-	
-	if (is.na(DoubletRemovalHandle)) {
-	  if (MultiModal) {
-	    if (any(grepl("Multiplexing", names(Raw)))) {
-	      DoubletRemovalHandle=FALSE
-	    } else {
-	      DoubletRemovalHandle=TRUE
-	    }
-	  } else {
-	    DoubletRemovalHandle=TRUE
-	  }
-	} 
-	
+	# data$Doublet.Classification="Singlet"
+
 	if (DoubletRemovalHandle) {
-	  DoubletRemoval = NormalizeData(data)
-	  DoubletRemoval = FindVariableFeatures(DoubletRemoval)
-	  DoubletRemoval = ScaleData(DoubletRemoval)
-	  DoubletRemoval = RunPCA(DoubletRemoval, npcs=100)
-	  pc.changes = diff(diff(DoubletRemoval@reductions$pca@stdev))
-	  pc.changes = abs(pc.changes)
-	  pc.changes = which(pc.changes >= mean(pc.changes))
-	  DoubletRemoval = FindNeighbors(DoubletRemoval, dims = 1:(max(pc.changes)+2), reduction = "pca")
-	  DoubletRemoval = FindClusters(DoubletRemoval, resolution = seq(2.0, 0.1, -0.1))
-	
-	  names = paste0(DefaultAssay(DoubletRemoval), "_snn_res.")
-	  SC3_Stability = clustree(DoubletRemoval, prefix = names)
-	  SC3_Stability.results = SC3_Stability$data
-	  SC3_Stability.results = SC3_Stability.results[, c(names, "sc3_stability")]
-	  colnames(SC3_Stability.results)[1] = "resolution"
-	  SC3_Stability.results.mean = aggregate(sc3_stability ~ resolution, SC3_Stability.results, mean)
-	  colnames(SC3_Stability.results.mean)[2] = "sc3_stability_mean"
-	  Idents(DoubletRemoval) = paste0(DefaultAssay(DoubletRemoval), "_snn_res.", max(as.numeric(as.character(SC3_Stability.results.mean$resolution))[SC3_Stability.results.mean$sc3_stability_mean == max(SC3_Stability.results.mean$sc3_stability_mean)]))
-	
-	  DoubletRemoval$seurat_clusters = Idents(DoubletRemoval)
-	
-	  params_selection = paramSweep_v3(DoubletRemoval, PCs = 1:(max(pc.changes)+2), sct = FALSE)
-	  params_selection = summarizeSweep(params_selection, GT = FALSE)
-	  params_selection = find.pK(params_selection)
-	
-	  annotations = DoubletRemoval@meta.data$DoubletRemoval$seurat_clusters
-	
-	  homotypic.prop = modelHomotypic(annotations) 
-	  nExp_poi = round(params$doublet_percentage * nrow(DoubletRemoval@meta.data))  
-	  nExp_poi.adj = round(nExp_poi * (1 - homotypic.prop))
-	
-	  DoubletRemoval = doubletFinder_v3(DoubletRemoval, PCs = 1:(max(pc.changes)+2), pN = 0.25, pK = as.numeric(as.character(params_selection$pK))[params_selection$BCmetric == max(params_selection$BCmetric)], nExp = nExp_poi, reuse.pANN = FALSE, sct = FALSE)
-	  doublet.classification.name = colnames(DoubletRemoval@meta.data)[ncol(DoubletRemoval@meta.data)]
-	  DoubletRemoval$Doublet.Classification = DoubletRemoval@meta.data[, doublet.classification.name]
-	
-	  data$Doublet.Classification = DoubletRemoval$Doublet.Classification
+
+		doubletRate <- ifelse(is.null(params$doublet_percentage), 0.008, params$doublet_percentage)
+		doubletRate <- doubletRate * ncol(data_matrix) / 1000
+
+		if (params$doublet_tool == "scDblFinder") {
+			set.seed(29)
+			sce <- SingleCellExperiment(list(counts = data_matrix))
+
+			# target_indices <- match(colnames(sce), tags$cell_barcode)
+			if (CellRangerMultiModal) {
+				colData(sce)$known_doublets <- tags$GT #[target_indices]
+				sce_dbl <- scDblFinder(sce, dbr = doubletRate, knownDoublets = (colData(sce)$known_doublets == "Doublet"), knownUse = "discard", removeUnidentifiable=FALSE)
+			} else {
+				# colData(sce)$known_doublets <- tags$GT #[target_indices]
+				sce_dbl <- scDblFinder(sce, dbr = doubletRate, removeUnidentifiable=FALSE)
+			}
+			black_list <- colnames(data_matrix[, sce_dbl$scDblFinder.class == "doublet"])
+
+			counts_mat <- assay(sce_dbl, "counts")
+
+			seurat_well <- CreateSeuratObject(
+			counts = counts_mat,
+			meta.data = as.data.frame(colData(sce_dbl))
+			)
+
+			seurat_well$Doublet.Classification <- ifelse(seurat_well$scDblFinder.class == "singlet", "Singlet", "Doublet")
+
+		} else {
+			seurat_well <- CreateSeuratObject(counts = data_matrix)
+
+			seurat_well <- NormalizeData(seurat_well) |> 
+				FindVariableFeatures() |>  
+				ScaleData() |>  
+				RunPCA()
+
+			pc.changes = diff(diff(seurat_well@reductions$pca@stdev))
+			pc.changes = abs(pc.changes)
+			pc.changes = which(pc.changes >= mean(pc.changes))
+			seurat_well = FindNeighbors(seurat_well, dims = 1:(max(pc.changes)+2), reduction = "pca")
+			seurat_well = FindClusters(seurat_well, resolution = seq(2.0, 0.1, -0.1))
+
+			names = paste0(DefaultAssay(seurat_well), "_snn_res.")
+			SC3_Stability = clustree(seurat_well, prefix = names)
+			SC3_Stability.results = SC3_Stability$data
+			SC3_Stability.results = SC3_Stability.results[, c(names, "sc3_stability")]
+			colnames(SC3_Stability.results)[1] = "resolution"
+			SC3_Stability.results.mean = aggregate(sc3_stability ~ resolution, SC3_Stability.results, mean)
+			colnames(SC3_Stability.results.mean)[2] = "sc3_stability_mean"
+			Idents(seurat_well) = paste0(DefaultAssay(seurat_well), "_snn_res.", max(as.numeric(as.character(SC3_Stability.results.mean$resolution))[SC3_Stability.results.mean$sc3_stability_mean == max(SC3_Stability.results.mean$sc3_stability_mean)]))
+
+			seurat_well$seurat_clusters = Idents(seurat_well)
+			if (CellRangerMultiModal) {
+				tagged_barcodes <- intersect(colnames(seurat_well), rownames(tags))
+				seurat_hto <- subset(seurat_well, cells = tagged_barcodes)
+				seurat_hto$GT <- tags[colnames(seurat_hto), "GT"]
+				
+				sweep.res.list <- paramSweep_v3(seurat_hto, PCs = 1:(max(pc.changes)+2), sct = FALSE)
+				gt.calls.aligned <- seurat_hto$GT[match(rownames(sweep.res.list[[1]]), colnames(seurat_hto))]
+				sweep.stats <- summarizeSweep(sweep.res.list, GT = TRUE, GT.calls = gt.calls.aligned)
+				bcmvn <- find.pK(sweep.stats)
+				best.pk <- as.numeric(as.character(bcmvn$pK[which.max(bcmvn$MeanAUC)]))
+			} else {
+				sweep.res.list <- paramSweep_v3(seurat_well, PCs = 1:(max(pc.changes)+2), sct = FALSE)
+				sweep.stats <- summarizeSweep(sweep.res.list, GT = FALSE)
+				bcmvn <- find.pK(sweep.stats)
+				best.pk <- as.numeric(as.character(bcmvn$pK[which.max(bcmvn$BCmetric)]))
+			}
+
+			annotations = seurat_well@meta.data$seurat_clusters
+
+			homotypic.prop = modelHomotypic(annotations) 
+			nExp_poi = round(doubletRate * nrow(seurat_well@meta.data))  
+			nExp_poi.adj = round(nExp_poi * (1 - homotypic.prop))
+
+			seurat_well <- doubletFinder_v3(seurat_well, 
+				PCs = 1:(max(pc.changes)+2), 
+				pN = 0.25, 
+				pK = best.pk, 
+				nExp = nExp_poi.adj, 
+				reuse.pANN = FALSE, 
+				sct = FALSE)				
+
+			doublet.classification.name = colnames(seurat_well@meta.data)[ncol(seurat_well@meta.data)]
+			seurat_well$Doublet.Classification = seurat_well@meta.data[, doublet.classification.name]
+
+			df_column <- grep("DF.classifications", colnames(seurat_well@meta.data), value = TRUE)
+			black_list <- colnames(seurat_well)[seurat_well@meta.data[[df_column]] == "Doublet"]
+		}
+
+		DoubletRemoval <- seurat_well[,colnames(data)]
+		if (CellRangerMultiModal) {
+			matches <- intersect(colnames(DoubletRemoval), tags$cell_barcode[tags$GT == "Doublet"])
+			if (length(matches) > 0) {
+				DoubletRemoval@meta.data[matches, "Doublet.Classification"] <- "Doublet"
+			}
+		}
 	}
+
 	```
-	
+
 	```{r doublet_removal}
-	
+
 	if (DoubletRemovalHandle) {
 	  colors = c("Singlet"="#6697c2", "Doublet"="#fe7f65")
 	  
-	  doublet_data = data.frame(gene=DoubletRemoval$nFeature_RNA, umi=DoubletRemoval$nCount_RNA, doublet_status=data$Doublet.Classification) %>%
-	                 mutate(doublet_status = factor(doublet_status, levels=c("Singlet", "Doublet")))
+	  doublet_data = data.frame(gene=DoubletRemoval$nFeature_RNA, umi=DoubletRemoval$nCount_RNA, doublet_status=DoubletRemoval$Doublet.Classification) %>%
+	            mutate(doublet_status = factor(doublet_status, levels=c("Singlet", "Doublet")))
 	  
 	  num_singlet = nrow(doublet_data %>% filter(doublet_status == 'Singlet'))
 	  num_doublet = nrow(doublet_data %>% filter(doublet_status == 'Doublet'))
@@ -425,6 +531,7 @@ def doublet_removal():
 	} else {
 	  cat("Doublet removal was not performed.")
 	}
+
 	```'''))
 
 def filtering():
@@ -434,7 +541,8 @@ def filtering():
 	# Filtering Summary {.tabset .tabset-pills}
 	
 	```{r Filtering}
-	
+	data$Doublet.Classification <- DoubletRemoval@meta.data[colnames(data), "Doublet.Classification"]
+
 	if (DoubletRemovalHandle) {
 	  data$Filtering = ifelse(
 	      data$Doublet.Classification!='Doublet' &
@@ -728,6 +836,8 @@ def parseArguments():
 	input_args = parser.add_argument_group('Input')
 	input_args.add_argument('-o', '--output-prefix', required=True, help='Output prefix', metavar='', dest='output_prefix')
 	input_args.add_argument('-i', '--input-file', required=True, help='Path to input file.', metavar='', dest='input_file')
+	input_args.add_argument('--input-well', required=False, help='Path to input file.', metavar='', dest='input_well')
+	input_args.add_argument('--tags-file', required=False, help='Path to input file.', metavar='', dest='input_tags')
 	input_args.add_argument('--metadata-file', default="", help='Path to metadata file.', metavar='', dest='metadata_file')
 	input_args.add_argument('--min-genes', default=0.01, type=float, help='Cutoff quantile for minimum number of genes in a cell.', metavar='', dest='min_genes')
 	input_args.add_argument('--max-genes', default=0.99, type=float, help='Cutoff quantile for maximum number of genes in a cell.', metavar='', dest='max_genes')
@@ -737,10 +847,11 @@ def parseArguments():
 	input_args.add_argument('--percent-ribosomal-cutoff', default=25, type=float, help='Ribosomal read percentage cutoff per cell.', metavar='', dest='percent_ribosomal_cutoff')
 	input_args.add_argument('--variable-features', default=3000, type=int, help='Number of variable features to use.', metavar='', dest='variable_features')
 	input_args.add_argument('--normalization-method', default='LogNormalize', choices=["LogNormalize","CLR","RC","SCT"], help='Normalization method to use.', metavar='', dest='normalization_method')
-	input_args.add_argument('--doublet-removal', default='DEFAULT', choices=["DEFAULT", "TRUE", "FALSE"], help='Runs doublet detection and removal.', metavar='', dest='doublet_removal')
-	input_args.add_argument('--doublet-percentage', default=0.01, type=float, help='Doublet percentage.', metavar='', dest='doublet_percentage')
+	input_args.add_argument('--doublet-removal', default='true', choices=["true", "false"], help='Runs doublet detection and removal tool.', metavar='', dest='doublet_removal')
+	input_args.add_argument('--doublet-percentage', default=0.008, type=float, required=False, help='Doublet percentage.', metavar='', dest='doublet_percentage')
 	input_args.add_argument('--remove-mitochondrial-genes', action='store_true', help='Remove mitochondrial genes.', dest='remove_mitochondrial_genes')
 	input_args.add_argument('--remove-ribosomal-genes', action='store_true', help='Remove ribosomal genes.', dest='remove_ribosomal_genes')
+	input_args.add_argument('--doublet-tool', default='scDblFinder', choices=["scDblFinder","DoubletFinder"], help='Doublet removal tool to use.', metavar='', dest='doublet_tool')
 	return parser.parse_args()
 
 if __name__ == "__main__":

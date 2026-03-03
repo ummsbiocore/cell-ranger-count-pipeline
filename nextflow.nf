@@ -768,7 +768,7 @@ input:
  tuple val(name), file("${name}_raw_feature_bc_matrix.h5")
 
 output:
- tuple val(name), file("${name}_corrected_feature_bc_matrix.h5")  ,emit:g_49_h5_file00_g36_0 
+ tuple val(name), file("${name}_corrected_feature_bc_matrix.h5"), file("*raw_placeholder.h5"), file("*tags_placeholder.tsv")  ,emit:g_49_h5_file00_g36_0 
  path "*_Ambient_RNA_QC.html"  ,emit:g_49_outputFileHTML11 
 
 container 'quay.io/viascientific/ambient_rna_removal:1.0'
@@ -779,6 +779,13 @@ Ambient_RNA_Removal = (params.Ambient_RNA_Removal == "yes") ? "TRUE" : "FALSE"
 
 '''
 #!/usr/bin/env perl
+
+# --- create placeholder files for downstream tuple compatibility ---
+# If upstream didn’t provide these, make sure they exist (empty is fine)
+system("bash -lc ': > !{name}_raw_placeholder.h5'") == 0 or die "failed to create raw placeholder\n";
+system("bash -lc ': > !{name}_tags_placeholder.tsv'") == 0 or die "failed to create tags placeholder\n";
+# ------------------------------------------------------------------
+
 
 my $script = <<'EOF';
 ---
@@ -895,7 +902,7 @@ process scRNA_Analysis_Module_Quality_Control_and_Filtering {
 
 publishDir params.outdir, mode: 'copy', saveAs: {filename -> if (filename =~ /${name}_filtering_report.html$/) "QC_Reports/$filename"}
 input:
- tuple val(name), file(input_file)
+ tuple val(name), file(input_file), file(raw), file(tags)
  path metadata
 
 output:
@@ -903,7 +910,7 @@ output:
  tuple val(name),file("${name}_filtering_report.html")  ,emit:g36_0_outputFileHTML11 
  path "${name}_filter_summary.tsv"  ,emit:g36_0_outFileTSV20_g36_34 
 
-container "quay.io/viascientific/scrna_seurat:2.0"
+container "quay.io/viascientific/scrna_seurat:2.1"
 
 when:
 (params.run_scRNA_Analysis && (params.run_scRNA_Analysis == "yes")) || !params.run_scRNA_Analysis || params.run_pySCENIC == "yes"
@@ -912,7 +919,7 @@ script:
 
 remove_mitochondiral_genes = params.scRNA_Analysis_Module_Quality_Control_and_Filtering.remove_mitochondiral_genes
 remove_ribosomal_genes = params.scRNA_Analysis_Module_Quality_Control_and_Filtering.remove_ribosomal_genes
-	
+
 min_genes = params.scRNA_Analysis_Module_Quality_Control_and_Filtering.min_genes
 max_genes = params.scRNA_Analysis_Module_Quality_Control_and_Filtering.max_genes
 min_UMIs = params.scRNA_Analysis_Module_Quality_Control_and_Filtering.min_UMIs
@@ -922,6 +929,7 @@ percent_ribosomal = params.scRNA_Analysis_Module_Quality_Control_and_Filtering.p
 
 doublet_removal = params.scRNA_Analysis_Module_Quality_Control_and_Filtering.doublet_removal
 doublet_percentage = params.scRNA_Analysis_Module_Quality_Control_and_Filtering.doublet_percentage
+doublet_removal_tool = params.scRNA_Analysis_Module_Quality_Control_and_Filtering.doublet_removal_tool
 
 normalization_method = params.scRNA_Analysis_Module_Quality_Control_and_Filtering.normalization_method
 variable_features = params.scRNA_Analysis_Module_Quality_Control_and_Filtering.variable_features
@@ -929,15 +937,35 @@ variable_features = params.scRNA_Analysis_Module_Quality_Control_and_Filtering.v
 remove_mitochondiral_genes_arg = remove_mitochondiral_genes == 'true' ? '--remove-mitochondrial-genes' : ''
 remove_ribosomal_genes_arg = remove_ribosomal_genes == 'true' ? '--remove_ribosomal_genes' : ''
 
-//* @style @multicolumn:{remove_mitochondiral_genes, remove_ribosomal_genes}, {min_genes, max_genes}, {min_UMIs, max_UMIs}, {percent_mitochondrial, percent_ribosomal}, {doublet_removal, doublet_percentage}, {normalization_method, variable_features}
+//* @style @condition:{doublet_removal="true", doublet_percentage, doublet_removal_tool},{doublet_removal="false"} @multicolumn:{remove_mitochondiral_genes, remove_ribosomal_genes}, {min_genes, max_genes}, {min_UMIs, max_UMIs}, {percent_mitochondrial, percent_ribosomal}, {doublet_percentage, doublet_removal_tool}, {normalization_method, variable_features}
+
+doublet_percentage_arg = doublet_percentage ? "--doublet-percentage ${doublet_percentage}" : ""
 
 """
-build_QC_report.py --output-prefix ${name} --input-file ${input_file} --metadata-file ${metadata} \
+
+tags_arg=""
+if [ -s ${tags} ] && [ \$(wc -l < ${tags}) -gt 1 ]; then
+    echo "Valid tags file detected - including in analysis"
+    tags_arg="--tags-file ${tags}"
+else
+    tags_arg="--tags-file ''"
+fi
+
+well_arg=""
+if [ -s "${name}_raw_placeholder.h5" ]; then
+  echo "Valid well file detected - including in analysis"
+  well_arg="--input-well ${name}_raw_placeholder.h5"
+fi
+
+echo \$tags_arg
+
+build_QC_report.py --output-prefix ${name} --input-file ${input_file} \$well_arg \$tags_arg \
+--metadata-file ${metadata} \
 --min-genes ${min_genes} --max-genes ${max_genes} \
 --min-UMIs ${min_UMIs} --max-UMIs ${max_UMIs} \
 --percent-mitochondrial-cutoff ${percent_mitochondrial} --percent-ribosomal-cutoff ${percent_ribosomal} ${remove_mitochondiral_genes_arg} ${remove_ribosomal_genes_arg} \
 --variable-features ${variable_features} --normalization-method ${normalization_method} \
---doublet-removal ${doublet_removal} --doublet-percentage ${doublet_percentage}
+--doublet-removal ${doublet_removal} ${doublet_percentage_arg} --doublet-tool ${doublet_removal_tool}
 """
 
 
@@ -1117,14 +1145,13 @@ if ($HOSTNAME == "default"){
 process scRNA_Analysis_Module_Clustering_and_Find_Markers {
 
 publishDir params.outdir, mode: 'copy', saveAs: {filename -> if (filename =~ /final_report.html$/) "Final_Report/$filename"}
-publishDir params.outdir, mode: 'copy', saveAs: {filename -> if (filename =~ /Final_Analysis.rds$/) "scViewer/$filename"}
 publishDir params.outdir, mode: 'copy', saveAs: {filename -> if (filename =~ /.*.tsv$/) "ClusterMarkers/$filename"}
 input:
  path seurat_object
 
 output:
  path "final_report.html"  ,emit:g36_19_outputHTML00 
- path "Final_Analysis.rds"  ,emit:g36_19_rdsFile10_g36_22 
+ path "Final_Analysis.rds"  ,emit:g36_19_rdsFile10_g36_36 
  path "*.tsv"  ,emit:g36_19_outFileTSV22 
 
 container "quay.io/viascientific/scrna_seurat:2.0"
@@ -1148,46 +1175,82 @@ build_clustering_and_find_markers.py --sample-path ${seurat_object} --min-resolu
 //* autofill
 if ($HOSTNAME == "default"){
     $CPU  = 1
-    $MEMORY = 60
+    $MEMORY = 4
 }
 //* platform
 //* platform
 //* autofill
 
-process scRNA_Analysis_Module_Create_h5ad {
+process scRNA_Analysis_Module_filter_summary {
 
-publishDir params.outdir, mode: 'copy', saveAs: {filename -> if (filename =~ /.*.h5ad$/) "H5AD_file/$filename"}
+publishDir params.outdir, mode: 'copy', saveAs: {filename -> if (filename =~ /.*$/) "filter_summary/$filename"}
 input:
- path seurat_obj
+ path input_files
 
 output:
- path "*.h5ad"  ,emit:g36_22_h5ad_file01_g57_12 
+ path "*"  ,emit:g36_34_outputFileHTML00 
 
 container "quay.io/viascientific/scrna_seurat:2.0"
 
 script:
+	
 """
-#!/usr/bin/env Rscript
+build_filtration_report.py --input-dir .
 
-# libraries
-library(Seurat)
-library(SeuratDisk)
-
-# read data
-seurat_obj <- readRDS("${seurat_obj}")
-
-for (var in colnames(seurat_obj@meta.data)) {
-  if (is.factor(seurat_obj@meta.data[,var])) {
-    seurat_obj@meta.data[,var]=as.character(seurat_obj@meta.data[,var])
-  }
+mkdir output
+mv by_criteria_summary.tsv output
+mv filtration_summary_report.Rmd output
+mv overall_filtration_summary.tsv output
+"""
 }
 
-# save h5ad file
-seu_name <- gsub(".rds","","${seurat_obj}")
-SaveH5Seurat(seurat_obj, filename = paste0(seu_name,".h5Seurat"))
-Convert(paste0(seu_name,".h5Seurat"), dest = "h5ad")
-"""
+//* autofill
+if ($HOSTNAME == "default"){
+    $CPU  = 4
+    $MEMORY = 20
+}
+//* platform
+//* platform
+//* autofill
 
+process scRNA_Analysis_Module_sc_annotation {
+
+publishDir params.outdir, mode: 'copy', saveAs: {filename -> if (filename =~ /.*.rds$/) "scViewer/$filename"}
+input:
+ path input_rds
+
+output:
+ path "*.rds"  ,emit:g36_36_rdsFile01_g36_40 
+
+container 'quay.io/mustafapir/sc_annotation:1.0.1'
+
+script:
+
+tissue_type = params.scRNA_Analysis_Module_sc_annotation.tissue_type
+
+species_map = [
+    "human_hg38_gencode_v32_cellranger_v6"      : "human",
+    "human_hg38_cellranger_GRCh38-2024-A"       : "human",
+    "mouse_mm10_gencode_vm23_cellranger_v6"     : "mouse",
+    "mouse_GRCm39_cellranger_GRCm39-2024-A"      : "mouse",
+    "zebrafish_GRCz11plus_ensembl"              : "zebrafish",
+    "d_melanogaster_BDGP6_32_ensembl_105_cellranger_v6": "d_melanogaster",
+    "d_melanogaster_flybase_r6_45_cellranger_v6" : "d_melanogaster"
+]
+
+species = species_map.get(params.genome_build, "human")
+
+"""
+if [ ${params.run_annotation} = "yes" ]; then
+  run_sctype.R \
+    --input ${input_rds} \
+    --output Final_Analysis_annotated.rds \
+    --organism ${species} \
+    --tissue "${tissue_type}" && \
+  rm -f ${input_rds}
+fi
+
+"""
 
 }
 
@@ -1209,21 +1272,51 @@ input:
 output:
  path "Data.loom" ,optional:true  ,emit:g36_30_outputFileOut00_g_572 
 
-container "quay.io/viascientific/scrna_seurat:2.0"
+container "quay.io/mustafapir/scrna_seurat:2.0.2"
 
 script:
 Generate_loom_file = params.scRNA_Analysis_Module_SCEtoLOOM.Generate_loom_file
+
 """
 #!/usr/bin/env Rscript
 
 #library
 library(Seurat)
+library(biomaRt)
  
 if (as.logical("${Generate_loom_file}") || as.logical("${params.run_pySCENIC == 'yes'}")) {
-    
+
 Data=readRDS("${seurat_object}")
 
-annotation=read.csv("https://huggingface.co/datasets/ctheodoris/Genecorpus-30M/raw/main/example_input_files/gene_info_table.csv",header = T,row.names = 1)
+create_annotation_table <- function(organism = c("human", "mouse", "d_melanogaster")) {
+  organism <- match.arg(organism)
+  
+  # Select ENSEMBL dataset depending on organism
+  dataset <- switch(
+    organism,
+    human = "hsapiens_gene_ensembl",
+    mouse = "mmusculus_gene_ensembl",
+    d_melanogaster = "dmelanogaster_gene_ensembl"
+  )
+  
+  # Connect to Ensembl
+  ensembl <- useEnsembl(biomart = "genes", dataset = dataset)
+  
+  # Retrieve Ensembl gene ID, gene name, gene type
+  genes <- getBM(
+    attributes = c("ensembl_gene_id", "external_gene_name", "gene_biotype"),
+    mart = ensembl
+  )
+  
+  # Ensure column names match your exact requested format
+  colnames(genes) <- c("ensembl_id", "gene_name", "gene_type")
+  
+  return(genes)
+}
+
+# annotation=read.csv("https://huggingface.co/datasets/ctheodoris/Genecorpus-30M/raw/main/example_input_files/gene_info_table.csv",header = T,row.names = 1)
+annotation=create_annotation_table("${params.species}")
+
 annotation=annotation[annotation\$gene_name%in%names(table(annotation\$gene_name))[table(annotation\$gene_name)==1],]
 rownames(annotation)=annotation\$gene_name
 metadata=Data@meta.data
@@ -1323,32 +1416,72 @@ zip pyscenic_out.zip adjacencies.csv regulons.csv aucell_matrix.csv
 //* autofill
 if ($HOSTNAME == "default"){
     $CPU  = 1
-    $MEMORY = 4
+    $MEMORY = 60
 }
 //* platform
 //* platform
 //* autofill
 
-process scRNA_Analysis_Module_filter_summary {
+process scRNA_Analysis_Module_Create_h5ad {
 
-publishDir params.outdir, mode: 'copy', saveAs: {filename -> if (filename =~ /.*$/) "filter_summary/$filename"}
+publishDir params.outdir, mode: 'copy', saveAs: {filename -> if (filename =~ /.*.h5ad$/) "H5AD_file/$filename"}
 input:
- path input_files
+ path seurat_obj
 
 output:
- path "*"  ,emit:g36_34_outputFileHTML00 
+ path "*.h5ad"  ,emit:g36_22_h5ad_file01_g57_12 
 
 container "quay.io/viascientific/scrna_seurat:2.0"
 
 script:
-	
 """
-build_filtration_report.py --input-dir .
+#!/usr/bin/env Rscript
 
-mkdir output
-mv by_criteria_summary.tsv output
-mv filtration_summary_report.Rmd output
-mv overall_filtration_summary.tsv output
+# libraries
+library(Seurat)
+library(SeuratDisk)
+
+# read data
+seurat_obj <- readRDS("${seurat_obj}")
+
+for (var in colnames(seurat_obj@meta.data)) {
+  if (is.factor(seurat_obj@meta.data[,var])) {
+    seurat_obj@meta.data[,var]=as.character(seurat_obj@meta.data[,var])
+  }
+}
+
+# save h5ad file
+seu_name <- gsub(".rds","","${seurat_obj}")
+SaveH5Seurat(seurat_obj, filename = paste0(seu_name,".h5Seurat"))
+Convert(paste0(seu_name,".h5Seurat"), dest = "h5ad")
+"""
+
+
+}
+
+
+process scRNA_Analysis_Module_tcr_analysis {
+
+input:
+ path final_rds
+ path annotated_final_rds
+
+output:
+ path "tcr_analysis.rds"  ,emit:g36_40_rdsFile00 
+
+
+when:
+(params.run_tcr_analysis && (params.run_tcr_analysis == "yes")) && !vdj_contigs.toString().contains("NO_FILE")
+
+script:
+
+"""
+if [[ "${annotated_final_rds}" == *NO_FILE* ]]; then
+    mv ${final_rds} tcr_analysis.rds
+else
+    mv ${annotated_final_rds} tcr_analysis.rds
+fi
+
 """
 }
 
@@ -1477,6 +1610,104 @@ preprocess_anndata.py \
 """
 }
 
+//* autofill
+if ($HOSTNAME == "default"){
+    $CPU  = 8
+    $MEMORY = 60 
+}
+//* platform
+//* platform
+//* autofill
+
+process CellChat2_create_cellchat_obj {
+
+publishDir params.outdir, mode: 'copy', saveAs: {filename -> if (filename =~ /.*_cellchat.rds$/) "single_sample_analysis/$filename"}
+publishDir params.outdir, mode: 'copy', saveAs: {filename -> if (filename =~ /signalling_scripts\/.*.rmd$/) "scripts/$filename"}
+input:
+ path seurat_obj
+
+output:
+ path "*_cellchat.rds"  ,emit:g580_1_rdsFile00 
+ path "signalling_scripts/*.rmd"  ,emit:g580_1_rMarkdown11 
+ path "cellchat_list.rds"  ,emit:g580_1_rdsFile20_g580_5 
+
+container 'quay.io/viascientific/cellchat2:2.0.0'
+
+when:
+params.run_cellchat2 == "yes"
+
+script:
+
+// CellChat2 params
+//* params.ident =  "sctype_classification"  //* @input @label:"Cell labels" @description:"Cell label column name"
+//* params.db_type =  "all"  //* @dropdown @label:"Ligand-receptor type" @options:"all","except_nonprotein","Secreted Signaling","ECM-Receptor","Cell-Cell Contact","Non-protein Signaling" @description:"Subset CellChatDB by ligand-receptor type"
+//* params.smooth =  "no"  //* @dropdown @label:"Project expression data onto PPI network?" @options:"yes","no" @description:"A diffusion process is used to smooth genes’ expression values based on their neighbors’ defined in a high-confidence experimentally validated protein-protein network. This function is useful when analyzing single-cell data with shallow sequencing depth because the projection reduces the dropout effects of signaling genes, in particular for possible zero expression of subunits of ligands/receptors."
+//* params.average_method =  "triMean"  //* @dropdown @label:"Method" @options:"triMean","truncatedMean","thresholdedMean","median" @description:"The method for calculating the average gene expression per cell group."
+//* params.trim =  "0.1"  //* @input @label:"Trim" @description:"The fraction (0 to 0.25) of observations to be trimmed from each end of x before the mean is computed."
+//* params.min_cells =  "10"  //* @input @label:"Min. number of cells" @description:"The minimum number of cells required in each cell group for cell-cell communication."
+//* params.cell_groups =  "no"  //* @dropdown @options:"yes","no" @label:"Subset cell groups?" @show_settings:"params.sources_use","params.targets_use"
+//* params.sources_use =  ""  //* @input @label:"Source cell groups" @description:"Comma separated index or the name of source cell groups" @optional
+//* params.targets_use =  ""  //* @input @label:"Target cell groups" @description:"Comma separated index or the name of target cell groups" @optional
+
+threads = task.cpus
+source_cells = params.sources_use ?: 'FALSE'
+target_cells = params.targets_use ?: 'FALSE'
+
+// species_map = [
+//     "human_hg38_gencode_v32_cellranger_v6"      : "human",
+//     "human_hg38_cellranger_GRCh38-2024-A"       : "human",
+//     "mouse_mm10_gencode_vm23_cellranger_v6"     : "mouse",
+//     "mouse_GRCm39_cellranger_GRCm39-2024-A"      : "mouse"
+// ]
+// organism = species_map.get(params.genome_build, "human")
+
+"""
+rds_file="\$(which create_cellchat_obj.R)"
+
+sed -i 's/\\r${'$'}//' "\${rds_file}"
+
+create_cellchat_obj.R ${seurat_obj} ${params.ident} ${params.species} ${params.db_type} ${threads} ${params.smooth} \
+    ${params.cell_groups} ${source_cells} ${target_cells} ${params.trim} ${params.min_cells}
+
+rmd_file="\$(which signalling.rmd)"
+mkdir -p signalling_scripts
+
+cp "\${rmd_file}" signalling_scripts/
+"""
+
+}
+
+
+process CellChat2_cellchat_comparison {
+
+publishDir params.outdir, mode: 'copy', saveAs: {filename -> if (filename =~ /scripts\/.*.rmd$/) "scripts/$filename"}
+publishDir params.outdir, mode: 'copy', saveAs: {filename -> if (filename =~ /report_input_files\/.*.rds$/) "comparison_analysis_result/$filename"}
+input:
+ path rds
+
+output:
+ path "scripts/*.rmd"  ,emit:g580_5_rMarkdown00 
+ path "report_input_files/*.rds"  ,emit:g580_5_rdsFile11 
+
+
+script:
+
+"""
+ls
+files=( cellchat_list.rds )
+echo "\${files[@]}"
+SAMPLES=()
+
+rmd_file="\$(which compare.rmd)"
+mkdir -p report_input_files
+mkdir -p scripts
+
+cp "\${rmd_file}" scripts/
+cp "\${files[@]}" report_input_files/
+
+"""
+}
+
 
 workflow {
 
@@ -1592,16 +1823,21 @@ g36_17_rdsFile00_g36_19 = scRNA_Analysis_Module_PCA_and_Batch_Effect_Correction.
 
 scRNA_Analysis_Module_Clustering_and_Find_Markers(g36_17_rdsFile00_g36_19)
 g36_19_outputHTML00 = scRNA_Analysis_Module_Clustering_and_Find_Markers.out.g36_19_outputHTML00
-g36_19_rdsFile10_g36_22 = scRNA_Analysis_Module_Clustering_and_Find_Markers.out.g36_19_rdsFile10_g36_22
-(g36_19_rdsFile10_g36_30) = [g36_19_rdsFile10_g36_22]
+g36_19_rdsFile10_g36_36 = scRNA_Analysis_Module_Clustering_and_Find_Markers.out.g36_19_rdsFile10_g36_36
+(g36_19_rdsFile10_g36_40) = [g36_19_rdsFile10_g36_36]
 g36_19_outFileTSV22 = scRNA_Analysis_Module_Clustering_and_Find_Markers.out.g36_19_outFileTSV22
 
 
-scRNA_Analysis_Module_Create_h5ad(g36_19_rdsFile10_g36_22)
-g36_22_h5ad_file01_g57_12 = scRNA_Analysis_Module_Create_h5ad.out.g36_22_h5ad_file01_g57_12
+scRNA_Analysis_Module_filter_summary(g36_0_outFileTSV20_g36_34.collect())
+g36_34_outputFileHTML00 = scRNA_Analysis_Module_filter_summary.out.g36_34_outputFileHTML00
 
 
-scRNA_Analysis_Module_SCEtoLOOM(g36_19_rdsFile10_g36_30)
+scRNA_Analysis_Module_sc_annotation(g36_19_rdsFile10_g36_36)
+g36_36_rdsFile01_g36_40 = scRNA_Analysis_Module_sc_annotation.out.g36_36_rdsFile01_g36_40
+(g36_36_rdsFile00_g36_22,g36_36_rdsFile00_g36_30,g36_36_rdsFile00_g580_1) = [g36_36_rdsFile01_g36_40,g36_36_rdsFile01_g36_40,g36_36_rdsFile01_g36_40]
+
+
+scRNA_Analysis_Module_SCEtoLOOM(g36_36_rdsFile00_g36_30)
 g36_30_outputFileOut00_g_572 = scRNA_Analysis_Module_SCEtoLOOM.out.g36_30_outputFileOut00_g_572
 
 
@@ -1610,8 +1846,14 @@ g_572_zipFile00 = pySCENIC.out.g_572_zipFile00
 g_572_loom11 = pySCENIC.out.g_572_loom11
 
 
-scRNA_Analysis_Module_filter_summary(g36_0_outFileTSV20_g36_34.collect())
-g36_34_outputFileHTML00 = scRNA_Analysis_Module_filter_summary.out.g36_34_outputFileHTML00
+scRNA_Analysis_Module_Create_h5ad(g36_36_rdsFile00_g36_22)
+g36_22_h5ad_file01_g57_12 = scRNA_Analysis_Module_Create_h5ad.out.g36_22_h5ad_file01_g57_12
+
+g36_36_rdsFile01_g36_40= g36_36_rdsFile01_g36_40.ifEmpty(ch_empty_file_1) 
+
+
+scRNA_Analysis_Module_tcr_analysis(g36_19_rdsFile10_g36_40,g36_36_rdsFile01_g36_40)
+g36_40_rdsFile00 = scRNA_Analysis_Module_tcr_analysis.out.g36_40_rdsFile00
 
 g_5_outputDir00_g57_5= g_5_outputDir00_g57_5.ifEmpty(ch_empty_file_1) 
 
@@ -1628,6 +1870,17 @@ g57_1_loom00_g57_12 = RNA_Velocity_Module_velocyto.out.g57_1_loom00_g57_12
 
 RNA_Velocity_Module_process_anndata(g57_1_loom00_g57_12.collect(),g36_22_h5ad_file01_g57_12)
 g57_12_h5ad00 = RNA_Velocity_Module_process_anndata.out.g57_12_h5ad00
+
+
+CellChat2_create_cellchat_obj(g36_36_rdsFile00_g580_1)
+g580_1_rdsFile00 = CellChat2_create_cellchat_obj.out.g580_1_rdsFile00
+g580_1_rMarkdown11 = CellChat2_create_cellchat_obj.out.g580_1_rMarkdown11
+g580_1_rdsFile20_g580_5 = CellChat2_create_cellchat_obj.out.g580_1_rdsFile20_g580_5
+
+
+CellChat2_cellchat_comparison(g580_1_rdsFile20_g580_5.collect())
+g580_5_rMarkdown00 = CellChat2_cellchat_comparison.out.g580_5_rMarkdown00
+g580_5_rdsFile11 = CellChat2_cellchat_comparison.out.g580_5_rdsFile11
 
 
 }
