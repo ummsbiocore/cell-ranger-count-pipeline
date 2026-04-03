@@ -1,0 +1,532 @@
+---
+title: "CellChat Analysis Report"
+params:
+  file: NULL
+  sample: NULL
+output:
+  html_document:
+    theme:
+      version: 5
+      bootswatch: lumen
+    toc: true
+    toc_depth: 2
+runtime: shiny
+---
+<style type="text/css">
+.main-container {
+  max-width: 1200px;
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE
+)
+library(CellChat)
+library(patchwork)
+library(downloadthis)
+
+```
+
+# Introduction
+
+This report presents a comprehensive analysis of cell–cell communication using the CellChat package. Each section includes visualizations and tables to illustrate key interaction patterns and signaling changes between groups.
+
+```{r load-cellchat, echo=FALSE, results='hide'}
+cellchat <- readRDS(params$file)
+
+cellchat <- netAnalysis_computeCentrality(cellchat, slot.name = "netP")
+
+pathway_list <- cellchat@netP$pathways
+
+# cellchat <- readRDS("merged_cellchat.rds")
+```
+
+# Signaling role 
+```{r select-pathways, fig.width=6, fig.height=5}
+fluidRow(
+  # Left column: pathway selector + download button
+  column(
+    width = 2,
+    selectInput(
+      inputId  = "pathway",
+      label    = "Select a signalling pathway",
+      choices  = pathway_list,
+      selected = pathway_list[1],
+      multiple = FALSE
+    ),
+    br(),
+    downloadButton("download_signaling_role_pdf", "Download PDF"),
+    br(),br(),
+    downloadButton("download_signaling_role_svg", "Download SVG")
+  ),
+
+  # Right column: the network plot
+  column(
+    width = 10,
+    plotOutput("signaling_role_plot", height = "500px")
+  )
+)
+
+# selectInput(
+#   inputId  = "pathway",
+#   label    = "Select a signalling pathway",
+#   choices  = pathway_list,
+#   selected = pathway_list[1],
+#   multiple = FALSE
+# )
+# 
+# renderPlot({
+#   netAnalysis_signalingRole_network(cellchat, signaling = input$pathway, width = 30, height = 10, font.size = 11, font.size.title = 12)
+# })
+
+br()
+br()
+
+```
+
+```{r sig-network}
+
+output$signaling_role_plot <- renderPlot({
+  # req(input$pathway)
+  netAnalysis_signalingRole_network(
+    cellchat,
+    signaling       = input$pathway,
+    width           = 30,
+    height          = 10,
+    font.size       = 11,
+    font.size.title = 12
+  )
+})
+
+# 2) download handler to save the network as a single‐page PDF
+output$download_signaling_role_pdf <- downloadHandler(
+  filename = function() {
+    paste0("signaling_role_network_", Sys.Date(), ".pdf")
+  },
+  content = function(file) {
+    # req(input$pathway)
+    # open PDF device
+    pdf(file, width = 14, height = 6)
+    # capture the plot object
+    p <- netAnalysis_signalingRole_network(
+      cellchat,
+      signaling       = input$pathway,
+      width           = 30,
+      height          = 10,
+      font.size       = 11,
+      font.size.title = 12
+    )
+    # force rendering
+    print(p)
+    dev.off()
+  },
+  contentType = "application/pdf"
+)
+
+output$download_signaling_role_svg <- downloadHandler(
+  filename = function() {
+    paste0("signaling_role_network_", Sys.Date(), ".svg")
+  },
+  content = function(file) {
+    # req(input$pathway)
+    # open PDF device
+    svg(file, width = 14, height = 6)
+    # capture the plot object
+    p <- netAnalysis_signalingRole_network(
+      cellchat,
+      signaling       = input$pathway,
+      width           = 30,
+      height          = 10,
+      font.size       = 11,
+      font.size.title = 12
+    )
+    # force rendering
+    print(p)
+    dev.off()
+  },
+  contentType = "image/svg+xml"
+)
+
+```
+# Bubble plot
+```{r cell-selection}
+
+fluidRow(
+  # Left column: inputs + download button
+  column(
+    width = 2,
+    selectInput(
+      inputId  = "pathway1",
+      label    = "Select a signalling pathway",
+      choices  = pathway_list,
+      selected = pathway_list[1],
+      multiple = FALSE
+    ),
+    selectInput(
+      inputId  = "source_cells",
+      label    = "Select source cell groups",
+      choices  = levels(cellchat@idents),
+      selected = NULL,
+      multiple = TRUE
+    ),
+    selectInput(
+      inputId  = "target_cells",
+      label    = "Select target cell groups",
+      choices  = levels(cellchat@idents),
+      selected = NULL,
+      multiple = TRUE
+    ), br(),
+    downloadButton("download_bubble_pdf", "Download PDF"),
+    br(),br(),
+    downloadButton("download_bubble_svg", "Download SVG")
+  ),
+
+  # Right column: the bubble plot itself
+  column(
+    width = 10,
+    plotOutput("bubble_plot", height = "400px", width = "1000px")
+  )
+)
+```
+
+
+```{r bubble-plot, fig.width=6, fig.height=5}
+
+
+# downloadButton("download_bubble", "Download Bubble Plot as PDF")
+
+output$bubble_plot <- renderPlot({
+  #req(input$pathway, input$source_cells, input$target_cells)
+  netVisual_bubble(
+    cellchat,
+    signaling      = input$pathway1,
+    sources.use    = input$source_cells,
+    targets.use    = input$target_cells,
+    remove.isolate = FALSE,
+    dot.size.min   = 2,
+    dot.size.max   = 12,
+    font.size      = 14,
+    font.size.title= 14,
+    line.size      = 0.4,
+    angle.x        = 45
+  )
+})
+
+# 2) download handler to produce a single‐page PDF of the bubble plot
+output$download_bubble_pdf <- downloadHandler(
+  filename = function() {
+    paste0("bubble_plot_", Sys.Date(), ".pdf")
+  },
+  content = function(file) {
+    # req(input$pathway, input$source_cells, input$target_cells)
+    # 1) Open a PDF device
+    pdf(file, width = 15, height = 5)
+    # 2) Capture the plot object
+    p <- netVisual_bubble(
+      cellchat,
+      signaling      = input$pathway1,
+      sources.use    = input$source_cells,
+      targets.use    = input$target_cells,
+      remove.isolate = FALSE,
+      dot.size.min   = 2,
+      dot.size.max   = 12,
+      font.size      = 14,
+      font.size.title= 14,
+      line.size      = 0.4,
+      angle.x        = 45
+    )
+    # 3) Force it onto the PDF
+    print(p)
+    # 4) Close device
+    dev.off()
+  },
+  contentType = "application/pdf"
+)
+
+output$download_bubble_svg <- downloadHandler(
+  filename = function() {
+    paste0("bubble_plot_", Sys.Date(), ".svg")
+  },
+  content = function(file) {
+    # req(input$pathway, input$source_cells, input$target_cells)
+    # 1) Open a PDF device
+    svg(file, width = 15, height = 5)
+    # 2) Capture the plot object
+    p <- netVisual_bubble(
+      cellchat,
+      signaling      = input$pathway1,
+      sources.use    = input$source_cells,
+      targets.use    = input$target_cells,
+      remove.isolate = FALSE,
+      dot.size.min   = 2,
+      dot.size.max   = 12,
+      font.size      = 14,
+      font.size.title= 14,
+      line.size      = 0.4,
+      angle.x        = 45
+    )
+    # 3) Force it onto the PDF
+    print(p)
+    # 4) Close device
+    dev.off()
+  },
+  contentType = "image/svg+xml"
+)
+# renderPlot({
+#   netVisual_bubble(
+#     cellchat,
+#     signaling     = input$pathway1,
+#     sources.use   = input$source_cells,
+#     targets.use   = input$target_cells,
+#     remove.isolate = FALSE,
+#     dot.size.min   = 2,     # optional – keep very small bubbles visible
+#     dot.size.max   = 12,     # ← bigger bubbles
+#     font.size = 14,
+#     font.size.title = 14,
+#     line.size = 0.4,
+#     angle.x = 45
+#   )
+# })
+
+
+```
+
+<!-- # bubble -->
+<!-- ```{r} -->
+<!--   netVisual_bubble( -->
+<!--     cellchat, -->
+<!--     signaling     = "ANNEXIN", -->
+<!--     sources.use   = c("CD14 Mono", "CD4 Naive T"), -->
+<!--     targets.use   = "DC", -->
+<!--     remove.isolate = FALSE, -->
+<!--     dot.size.min   = 2,     # optional – keep very small bubbles visible -->
+<!--     dot.size.max   = 12,     # ← bigger bubbles -->
+<!--     font.size = 14, -->
+<!--     font.size.title = 14, -->
+<!--     line.size = 0.4 -->
+<!--   ) -->
+
+<!-- ``` -->
+<br><br />
+<br><br />
+
+# Circle plot
+
+```{r select-pathways2, fig.width=6, fig.height=5}
+
+selectInput(
+  inputId  = "pathway_circle",
+  label    = "Select a signalling pathway",
+  choices  = pathway_list,
+  selected = pathway_list[1],
+  multiple = TRUE
+)
+
+downloadButton("download_plots_pdf", "Download All Plots as PDF")
+downloadButton("download_plots_svg", "Download All Plots as SVG")
+
+```
+
+```{r, circle-plot, fig.width=6, fig.height=5}
+# renderPlot({
+#   netVisual_aggregate(cellchat, signaling = input$pathway, vertex.receiver = vertex.receiver, layout = "circle",
+#                       vertex.weight = 3,
+#                       vertex.size.max = 5,
+#                       vertex.weight.max = 5,
+#                       title.space = 4,
+#                       alpha.image = 0.5,
+#                       pt.title = 14,
+#                       point.size = 3
+#                       )
+# })
+
+chunk <- function(x, n) {
+  split(x, ceiling(seq_along(x)/n))
+}
+
+output$plots_ui <- renderUI({
+  req(input$pathway_circle)
+  # split selected pathways into rows of max 3
+  rows <- chunk(input$pathway_circle, 3)
+  
+  # build one fluidRow per chunk
+  tagList(lapply(rows, function(path_vec) {
+    fluidRow(
+      lapply(path_vec, function(p) {
+        column(
+          width = 4,       # 12/3 = 4 columns each
+          plotOutput(
+            outputId = paste0("plot_", make.names(p)),
+            height   = "350px"  # adjust as you like
+          )
+        )
+      })
+    )
+  }))
+})
+
+# render each plot on the fly
+observe({
+  req(input$pathway_circle)
+  lapply(input$pathway_circle, function(p) {
+    out_id <- paste0("plot_", make.names(p))
+    output[[out_id]] <- renderPlot({
+      netVisual_aggregate(
+        cellchat,
+        signaling         = p,
+        vertex.receiver   = vertex.receiver,
+        layout            = "circle",
+        vertex.weight     = 3,
+        vertex.size.max   = 5,
+        vertex.weight.max = 5,
+        title.space       = 4,
+        alpha.image       = 0.5,
+        pt.title          = 14,
+        point.size        = 3
+      )
+    })
+  })
+})
+
+uiOutput("plots_ui")
+
+output$download_plots_pdf <- downloadHandler(
+  filename = function() {
+    paste0("circle_plots_", Sys.Date(), ".pdf")
+  },
+  content = function(file) {
+    req(input$pathway_circle)
+    # open PDF device
+    pdf(file, width = 6, height = 5)
+    # draw one page per pathway
+    for (p in input$pathway_circle) {
+      netVisual_aggregate(
+        cellchat,
+        signaling         = p,
+        vertex.receiver   = vertex.receiver,
+        layout            = "circle",
+        vertex.weight     = 3,
+        vertex.size.max   = 5,
+        vertex.weight.max = 5,
+        title.space       = 4,
+        alpha.image       = 0.5,
+        pt.title          = 14,
+        point.size        = 3
+      )
+    }
+    dev.off()
+  },
+  contentType = "application/pdf"
+)
+
+# output$download_plots_svg <- downloadHandler(
+#   filename = function() {
+#     paste0("circle_plots_", Sys.Date(), ".svg")
+#   },
+#   content = function(file) {
+#     req(input$pathway_circle)
+#     pathways  <- input$pathway_circle
+#     n         <- length(pathways)
+#     ncol      <- 3
+#     nrow      <- ceiling(n / ncol)
+#     
+#     svg(file, width = ncol * 4, height = nrow * 4)
+#     
+#     grid::grid.newpage()
+#     grid::pushViewport(
+#       grid::viewport(
+#         layout = grid::grid.layout(nrow, ncol)
+#       )
+#     )
+#     for (i in seq_along(pathways)) {
+#       p      <- pathways[i]
+#       row    <- ceiling(i / ncol)
+#       col    <- ((i - 1) %% ncol) + 1
+#       
+#       # drill into the right cell
+#       grid::pushViewport(
+#         grid::viewport(
+#           layout.pos.row = row,
+#           layout.pos.col = col
+#         )
+#       )
+#       
+#       # draw the plot
+#       netVisual_aggregate(
+#         cellchat,
+#         signaling         = p,
+#         vertex.receiver   = vertex.receiver,
+#         layout            = "circle",
+#         vertex.weight     = 3,
+#         vertex.size.max   = 5,
+#         vertex.weight.max = 5,
+#         title.space       = 4,
+#         alpha.image       = 0.5,
+#         pt.title          = 14,
+#         point.size        = 3
+#       )
+#       
+#       grid::popViewport()  # back out of this cell
+#     }
+# 
+#     grid::popViewport()
+#     dev.off()
+#   },
+#   contentType = "image/svg+xml"
+# )
+
+
+output$download_plots_svg <- downloadHandler(
+  filename   = function() paste0("circle_plots_", Sys.Date(), ".svg"),
+  contentType= "image/svg+xml",
+  content    = function(file) {
+    req(input$pathway_circle)
+    paths <- input$pathway_circle
+    n     <- length(paths)
+    
+    # decide rows & columns
+    ncol <- min(3, n)
+    nrow <- ceiling(n / ncol)
+    
+    # 1) open SVG device
+    svg(file,
+        width  = ncol * 5,   # 5 inches per panel horizontally
+        height = nrow * 7)   # 5 inches per panel vertically
+    
+    # 2) tell base graphics to split the page
+    par(
+      mfrow = c(nrow, ncol),
+      mar   = c(1,1,2,1),   # tighten margins (bottom, left, top, right)
+      xpd   = TRUE
+    )
+     
+    # 3) draw each circle plot
+    for (p in paths) {
+      netVisual_aggregate(
+        cellchat,
+        signaling         = p,
+        vertex.receiver   = vertex.receiver,
+        layout            = "circle",
+        vertex.weight     = 3,
+        vertex.size.max   = 5,
+        vertex.weight.max = 5,
+        title.space       = 4,
+        alpha.image       = 0.5,
+        pt.title          = 14,
+        point.size        = 3
+      )
+    }
+    
+    # 4) close device
+    dev.off()
+  }
+)
+
+```
+
+
