@@ -203,7 +203,7 @@ output:
  path "${newNameFasta}"  ,emit:g17_21_genome00_g17_58 
  path "${newNameGtf}"  ,emit:g17_21_gtfFile10_g17_57 
 
-container 'quay.io/viascientific/pipeline_base_image:1.0'
+container 'quay.io/ummsbiocore/pipeline_base_image:1.0'
 
 when:
 params.run_Download_Genomic_Sources == "yes"
@@ -359,7 +359,7 @@ output:
  path "${genomeName}_custom.fa"  ,emit:g17_58_genome00_g17_52 
  path "${gtfName}_custom_sorted.gtf"  ,emit:g17_58_gtfFile10_g17_53 
 
-container 'quay.io/viascientific/custom_sequence_to_genome_gtf:1.0'
+container 'quay.io/ummsbiocore/custom_sequence_to_genome_gtf:1.0'
 
 when:
 params.add_sequences_to_reference == "yes"
@@ -428,7 +428,7 @@ input:
 output:
  path "${gtfName}.bed"  ,emit:g17_53_bed03_g17_54 
 
-container "${ params.IMAGE_BASE ? "${params.IMAGE_BASE}/rnaseq:4.0" : "quay.io/viascientific/rnaseq:4.0" }"
+container "${ params.IMAGE_BASE ? "${params.IMAGE_BASE}/rnaseq:4.0" : "quay.io/ummsbiocore/rnaseq:4.0" }"
 
 when:
 params.run_Download_Genomic_Sources == "yes"
@@ -515,7 +515,7 @@ output:
  path "*/${genomeSizes2}" ,optional:true  ,emit:g17_54_genomeSizes22 
  path "*/${bed2}" ,optional:true  ,emit:g17_54_bed33 
 
-container 'quay.io/viascientific/pipeline_base_image:1.0'
+container 'quay.io/ummsbiocore/pipeline_base_image:1.0'
 stageInMode 'copy'
 
 script:
@@ -628,7 +628,7 @@ input:
 output:
  path "*/${transcriptome}"  ,emit:g_20_reference02_g_5 
 
-container 'quay.io/viascientific/pipeline_base_image:1.0'
+container 'quay.io/ummsbiocore/pipeline_base_image:1.0'
 stageInMode 'copy'
 
 script:
@@ -771,7 +771,7 @@ output:
  tuple val(name), file("${name}_corrected_feature_bc_matrix.h5"), file("*raw_placeholder.h5"), file("*tags_placeholder.tsv")  ,emit:g_49_h5_file00_g36_0 
  path "*_Ambient_RNA_QC.html"  ,emit:g_49_outputFileHTML11 
 
-container 'quay.io/viascientific/ambient_rna_removal:1.0'
+container 'quay.io/ummsbiocore/ambient_rna_removal:1.0'
 label 'Ambient_RNA_QC'
 
 shell:
@@ -910,7 +910,7 @@ output:
  tuple val(name),file("${name}_filtering_report.html")  ,emit:g36_0_outputFileHTML11 
  path "${name}_filter_summary.tsv"  ,emit:g36_0_outFileTSV20_g36_34 
 
-container "quay.io/viascientific/scrna_seurat:2.1"
+container "quay.io/ummsbiocore/scrna_seurat:2.1"
 
 when:
 (params.run_scRNA_Analysis && (params.run_scRNA_Analysis == "yes")) || !params.run_scRNA_Analysis || params.run_pySCENIC == "yes"
@@ -989,7 +989,7 @@ input:
 output:
  path "merged_filtered_seurat.rds"  ,emit:g36_14_rdsFile00_g36_17 
 
-container "quay.io/viascientific/scrna_seurat:2.0"
+container "quay.io/ummsbiocore/scrna_seurat:2.0"
 
 script:
 """
@@ -1035,7 +1035,7 @@ input:
 output:
  path "Reduced_and_Corrected.rds"  ,emit:g36_17_rdsFile00_g36_19 
 
-container "quay.io/viascientific/scrna_seurat:2.0"
+container "quay.io/ummsbiocore/scrna_seurat:2.0"
 
 script:
 varFeatures = params.scRNA_Analysis_Module_PCA_and_Batch_Effect_Correction.varFeatures
@@ -1154,7 +1154,7 @@ output:
  path "Final_Analysis.rds"  ,emit:g36_19_rdsFile10_g36_36 
  path "*.tsv"  ,emit:g36_19_outFileTSV22 
 
-container "quay.io/viascientific/scrna_seurat:2.0"
+container "quay.io/ummsbiocore/scrna_seurat:2.0"
 
 script:
 min_resolution = params.scRNA_Analysis_Module_Clustering_and_Find_Markers.min_resolution
@@ -1190,7 +1190,7 @@ input:
 output:
  path "*"  ,emit:g36_34_outputFileHTML00 
 
-container "quay.io/viascientific/scrna_seurat:2.0"
+container "quay.io/ummsbiocore/scrna_seurat:2.0"
 
 script:
 	
@@ -1363,7 +1363,7 @@ output:
  path "pyscenic_out.zip"  ,emit:g_572_zipFile00 
  path "scenic_integrated.loom"  ,emit:g_572_loom11 
 
-container 'quay.io/viascientific/pyscenic:1.0.1'
+container 'quay.io/ummsbiocore/pyscenic:1.0.1'
 
 when:
 params.run_pySCENIC == "yes"
@@ -1431,7 +1431,7 @@ input:
 output:
  path "*.h5ad"  ,emit:g36_22_h5ad_file01_g57_12 
 
-container "quay.io/viascientific/scrna_seurat:2.0"
+container "quay.io/ummsbiocore/scrna_seurat:2.0"
 
 script:
 """
@@ -1631,7 +1631,7 @@ output:
  path "signalling_scripts/*.rmd"  ,emit:g580_1_rMarkdown11 
  path "cellchat_list.rds"  ,emit:g580_1_rdsFile20_g580_5 
 
-container 'quay.io/viascientific/cellchat2:2.0.0'
+container 'quay.io/ummsbiocore/cellchat2:2.0.0'
 
 when:
 params.run_cellchat2 == "yes"
